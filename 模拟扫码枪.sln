@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36705.20 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "模拟扫码枪", "模拟扫码枪\模拟扫码枪.csproj", "{FF654A13-36CB-4994-965F-52A66EDE93DA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FF654A13-36CB-4994-965F-52A66EDE93DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FF654A13-36CB-4994-965F-52A66EDE93DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FF654A13-36CB-4994-965F-52A66EDE93DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FF654A13-36CB-4994-965F-52A66EDE93DA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {05A46BC5-3B9B-4EB7-B4A1-230F1BE155E7}
+	EndGlobalSection
+EndGlobal
