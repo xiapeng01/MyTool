@@ -70,9 +70,7 @@ namespace 模拟扫码枪
         string sendString = "SendString";
 
         [ObservableProperty]
-        int orderIndex = 0;//流水号
-
-
+        int orderIndex = 0;//流水号 
  
         public ScannerModel()
         {
@@ -84,6 +82,7 @@ namespace 模拟扫码枪
             TcpListener? server=null;
             SerialPort? sp = null;
             await Task.Delay(1000);
+            //TcpServer ser = new TcpServer(this);
             while (true)
             {
                 await Task.Delay(10);
@@ -100,11 +99,9 @@ namespace 模拟扫码枪
                             sp.Parity = Parity;
                             sp.StopBits = StopBits;
                             sp.Open();
-                            sp.DataReceived += Sp_DataReceived;
-                        }else
-                        {
-                            //DoServerWork(sp.BaseStream);
-                        }
+                            sp.ReadTimeout = 500;
+                            sp.DataReceived += Sp_DataReceived;                             
+                        } 
                     }else
                     {
                         try
@@ -122,12 +119,12 @@ namespace 模拟扫码枪
                         {
                             server = new TcpListener(IPAddress.Any, Port);
                             server.Start();
-                            _=Task.Run(async() => {
+                            _ = Task.Run(async () =>
+                            {
                                 await AcceptClient(server);
                             });
                         }
-                    }
-                    else
+                    }else
                     {
                         try
                         {
@@ -135,7 +132,7 @@ namespace 模拟扫码枪
                             server?.Dispose();
                         }
                         catch { }
-                        server = null; 
+                        server = null;
                     }
                 }
                 catch (Exception ex)
@@ -154,10 +151,12 @@ namespace 模拟扫码枪
                 try
                 {
                     var client = server.AcceptTcpClient();
+                    
                     _ = Task.Run(()=>ResponseNetwork(client));
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    MessageEvent?.Invoke(ex.Message);
                     await Task.Delay(10);
                 }
             }
@@ -165,27 +164,47 @@ namespace 模拟扫码枪
 
         async Task ResponseNetwork(TcpClient client)
         {
-            while(true)
+            try
             {
-                try
+                if (IsEnableServer && client != null && client.Connected)
                 {
-                    await DoServerWork(client.GetStream());
+                    client.ReceiveTimeout = 500;
+                    MessageEvent?.Invoke($"客户端{client.Client.RemoteEndPoint?.ToString()}已上线");
+                    var s = client.GetStream();
+                    _ = Task.Run(async () =>
+                    {
+                        while (s != null)
+                        {
+                            await Task.Delay(100);
+                            if (!IsConnected(client))
+                            {
+                                s?.Dispose();
+                                s = null;
+                            }
+                        }
+                    });
+                    while (s != null) await DoServerWork(s);
                 }
-                catch (Exception ex)
+                else
                 {
-                    await Task.Delay(10);
-                    MessageEvent?.Invoke(ex.Message);
+                    client?.Dispose();
+                    client = null;
                 }
+            }
+            catch (ObjectDisposedException) { }
+            catch (IOException) { }
+            catch (Exception ex)
+            {
+                client?.Dispose();
+                await Task.Delay(10);
+                MessageEvent?.Invoke(ex.Message);
             }
         }
 
         void Foo1()
         {
-            TcpServer? server = null;
-
-            SerialPort? sp = null;
-
-            server = new TcpServer(this);
+            TcpServer? server = new TcpServer(this);
+            SerialPort? sp = null; 
             _ = Task.Run(async () => {
                 while (true)
                 {
@@ -217,23 +236,20 @@ namespace 模拟扫码枪
 
         async Task DoServerWork(Stream s)
         {
-            try
+            if (!IsEnableServer) return;
+            if (s is null) return;
+            var buffer = new byte[1024];
+            int n =await s.ReadAsync(buffer, 0, buffer.Length);
+            if (n > 0)
             {
-                if (!IsEnableServer) return;
-                var buffer = new byte[1024];
-                int n = s.Read(buffer, 0, buffer.Length);
                 var str = Encoding.UTF8.GetString(buffer, 0, n);
                 if (string.IsNullOrWhiteSpace(str)) return;
                 MessageEvent?.Invoke($"收到内容：{str}");
                 var str2 = GetResponseString(str);
                 if (string.IsNullOrWhiteSpace(str2)) return;
                 var sendData = Encoding.UTF8.GetBytes(str2);
-                s.Write(sendData);
-            }
-            catch (Exception ex)
-            {
-                await Task.Delay(10);
-                MessageEvent?.Invoke(ex.Message);
+                await s.WriteAsync(sendData);
+                await s.FlushAsync();
             }
         }
 
@@ -257,15 +273,16 @@ namespace 模拟扫码枪
  
 
 
-        bool IsSocketConnected(Socket s)
+        bool IsConnected(Socket s)
         {
             return !(s.Poll(1000, SelectMode.SelectRead) && (s.Available == 0)) && s.Connected;
         }
 
 
-        public static bool IsSocketConnected(TcpClient client)
+        bool IsConnected(TcpClient client)
         {
-            return !(client.Client.Poll(1000, SelectMode.SelectRead) && client.Client.Available == 0) && client.Client.Connected;
+            return IsConnected(client.Client);
+            //return !(client.Client.Poll(1000, SelectMode.SelectRead) && client.Client.Available == 0) && client.Client.Connected;
         }
 
         void ClearReceiveString()
