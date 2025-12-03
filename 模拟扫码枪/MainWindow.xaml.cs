@@ -28,5 +28,13 @@ namespace 模拟扫码枪
                 vm.SaveSettings();
             }
         }
+
+        private void Window_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if(this.DataContext is MainWindowViewModel vm)
+            {
+                vm.Msg = "";//清空消息
+            }
+        }
     }
 }

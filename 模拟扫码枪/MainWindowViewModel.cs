@@ -39,14 +39,15 @@ namespace 模拟扫码枪
             }
             for (int i = 0; i < Scanners.Length; i++)
             { 
-                Scanners[i].MessageEvent += AddMessage;
+                Scanners[i].UpdateMessageEvent += AddMessage;
             }
         }
 
         void AddMessage(string s)
         {
             Application.Current?.Dispatcher?.Invoke(() => {
-                Msg += $"[{DateTime.Now:HH:mm:ss}] {s}\n";
+                Msg = $"[{DateTime.Now:HH:mm:ss}] {s}{Environment.NewLine}" + Msg;
+                if (Msg.Length >= 10_000) Msg = Msg.Substring(0,10_000);
             });
         }
 

@@ -1,31 +1,86 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input; 
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
-using System.IO.Ports;
-using System.Text.Json.Serialization;
-using System.Windows;
-using System.Net;
 using System.ComponentModel;
+using System.Diagnostics.Eventing.Reader;
+using System.IO;
+using System.IO.Ports;
+using System.Linq;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.Reflection.Metadata.Ecma335;
+using System.Text;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
+
 namespace 模拟扫码枪
 {
     public enum InterfaceType { 串口, 以太网 }
-    public partial class ScannerModel : ObservableObject,IService
+    public enum ConnectionType { 客户端, 服务器 }
+    public enum WorkModel { 主动触发, 被动接收 }
+    /// <summary>
+    /// 空类，什么都不做
+    /// </summary>
+    public partial class ScannerModel:ScannerModelBase
     {
-        public event Action<string>? MessageEvent;
+        protected override Task ReceiveWork(Stream s)
+        {
+            return DoServerWork(s);
+        }
 
-        [JsonIgnore]
-        public InterfaceType[] DeviceTypeValues => Enum.GetValues(typeof(InterfaceType)).Cast<InterfaceType>().ToArray();
-        [JsonIgnore]
-        public Parity[] ParityValues => Enum.GetValues(typeof(Parity)).Cast<Parity>().ToArray();
-        [JsonIgnore]
-        public StopBits[] StopBitsValues => Enum.GetValues(typeof(StopBits)).Cast<StopBits>().ToArray();
-        [JsonIgnore]
-        public string[] PortNames => SerialPort.GetPortNames();
+        async Task DoServerWork(Stream s)
+        {
+
+
+            if (!IsEnableClient) return;
+            if (s is null) return;
+            if (!s.CanRead) return;
+            if (!s.CanWrite) return;
+            var buffer = new byte[1024];
+            int n = await s.ReadAsync(buffer, 0, buffer.Length);
+            if (n > 0)
+            {
+                var str = Encoding.UTF8.GetString(buffer, 0, n);
+                if (string.IsNullOrWhiteSpace(str)) return;
+                UpdateMessage($"收到内容：{str}");
+                ReceiveString = str;
+                var str2 = GetResponseString(str);
+                if (string.IsNullOrWhiteSpace(str2)) return;
+                var sendData = Encoding.UTF8.GetBytes(str2);
+                await s.WriteAsync(sendData);
+                await s.FlushAsync();
+            }
+        }
+  
+        protected override async Task<string> DoClientWork(Stream s)
+        {
+            try
+            {
+                var str = GetResponseString(TriggerString);
+                if (string.IsNullOrEmpty(str)) return "";
+                var sendData = Encoding.UTF8.GetBytes(str);
+                await s.WriteAsync(sendData);
+                await s.FlushAsync();
+                return "";
+            }
+            catch (Exception)
+            {
+                
+            }
+            return "";
+        }
+    }
+
+    public partial class ScannerModelBase:ObservableObject,IDisposable
+    { 
+        public event Action<string>? UpdateMessageEvent;
+
+        [ObservableProperty]
+        bool isEnableClient = true;
 
         [ObservableProperty]
         bool isEnableServer = false;//启用虚拟服务器
@@ -34,10 +89,38 @@ namespace 模拟扫码枪
         bool isUseTriggerString = false;//使用触发字符串
 
         [ObservableProperty]
+        string sendString = "SendString";
+
+        [ObservableProperty]
         bool isAppendOrderIndex = false;//是否自动附加流水号
 
         [ObservableProperty]
+        int orderIndex = 0;//流水号 
+
+        [JsonIgnore]
+        public InterfaceType[] DeviceTypeValues => Enum.GetValues(typeof(InterfaceType)).Cast<InterfaceType>().ToArray();
+        [JsonIgnore]        
+        public ConnectionType[] ConnectionTypes => Enum.GetValues(typeof(ConnectionType)).Cast<ConnectionType>().ToArray();
+
+        [JsonIgnore]
+        public WorkModel[] WorkModelValues=> Enum.GetValues(typeof(WorkModel)).Cast<WorkModel>().ToArray();
+
+        [JsonIgnore]
+        public string[] PortNames => SerialPort.GetPortNames();
+
+        [JsonIgnore]
+        public Parity[] ParityValues => Enum.GetValues(typeof(Parity)).Cast<Parity>().ToArray();
+        [JsonIgnore]
+        public StopBits[] StopBitsValues => Enum.GetValues(typeof(StopBits)).Cast<StopBits>().ToArray();
+
+        [ObservableProperty]
+        ConnectionType connectionType = ConnectionType.客户端;//连接方式
+
+        [ObservableProperty]
         InterfaceType deviceType = InterfaceType.以太网;
+
+        [ObservableProperty]
+        WorkModel workModel = WorkModel.主动触发;//默认是主动触发方式
 
         [ObservableProperty]
         string portName = "COM1";
@@ -66,271 +149,446 @@ namespace 模拟扫码枪
         [ObservableProperty]
         string receiveString = "";
 
+        [JsonIgnore]
+        public bool CanTrigger => WorkModel == WorkModel.主动触发;
+
+        [property: JsonIgnore]
         [ObservableProperty]
-        string sendString = "SendString";
+        SolidColorBrush statusBrush = Brushes.Red;
 
-        [ObservableProperty]
-        int orderIndex = 0;//流水号 
- 
-        public ScannerModel()
+        CancellationTokenSource cts = new CancellationTokenSource();
+
+        TcpClient? pubClient;//TCP客户端 
+        public ScannerModelBase()
         {
-            _ = Task.Run(Foo);
+            //服务器响应客户端连接线程
+            _ = Task.Run(ServerJob, cts.Token);
+
+            //检测连接状态线程
+            _ = Task.Run(AutoPingWork, cts.Token);
+
+            //检测连接是否是否正常
+            _ = Task.Run(CheckClient, cts.Token);
+
+            //服务器模式主动接收线程
+            _ = Task.Run(clientWork, cts.Token);
+
+            //被动接收线程
+            _ = Task.Run(Job1, cts.Token); 
         }
 
-        async Task Foo()
-        {
-            TcpListener? server=null;
-            SerialPort? sp = null;
-            await Task.Delay(1000);
-            //TcpServer ser = new TcpServer(this);
-            while (true)
-            {
-                await Task.Delay(10);
-                try
-                {  
-                    if(DeviceType == InterfaceType.串口 && IsEnableServer)
-                    {
-                        if(sp == null)
-                        {
-                            sp = new SerialPort();
-                            sp.PortName = PortName;
-                            sp.BaudRate = BaudRate;
-                            sp.DataBits = DataBits;
-                            sp.Parity = Parity;
-                            sp.StopBits = StopBits;
-                            sp.Open();
-                            sp.ReadTimeout = 500;
-                            sp.DataReceived += Sp_DataReceived;                             
-                        } 
-                    }else
-                    {
-                        try
-                        {
-                            //if (sp != null) sp.DataReceived -= Sp_DataReceived;
-                            sp?.Dispose();
-                        }
-                        catch { }
-                        sp = null; 
-                    }
-
-                    if (IsEnableServer && DeviceType == InterfaceType.以太网)
-                    {
-                        if (server == null)
-                        {
-                            server = new TcpListener(IPAddress.Any, Port);
-                            server.Start();
-                            _ = Task.Run(async () =>
-                            {
-                                await AcceptClient(server);
-                            });
-                        }
-                    }else
-                    {
-                        try
-                        {
-                            server?.Stop();
-                            server?.Dispose();
-                        }
-                        catch { }
-                        server = null;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    await Task.Delay(10);
-                    MessageEvent?.Invoke(ex.Message);
-                }
-            }
-        } 
-
-        //响应客户端
-        async Task AcceptClient(TcpListener server)
-        {
-            while (true)
-            {
-                try
-                {
-                    var client = server.AcceptTcpClient();
-                    
-                    _ = Task.Run(()=>ResponseNetwork(client));
-                }
-                catch (Exception ex)
-                {
-                    MessageEvent?.Invoke(ex.Message);
-                    await Task.Delay(10);
-                }
-            }
-        }
-
-        async Task ResponseNetwork(TcpClient client)
-        {
-            try
-            {
-                if (IsEnableServer && client != null && client.Connected)
-                {
-                    client.ReceiveTimeout = 500;
-                    MessageEvent?.Invoke($"客户端{client.Client.RemoteEndPoint?.ToString()}已上线");
-                    var s = client.GetStream();
-                    _ = Task.Run(async () =>
-                    {
-                        while (s != null)
-                        {
-                            await Task.Delay(100);
-                            if (!IsConnected(client))
-                            {
-                                s?.Dispose();
-                                s = null;
-                            }
-                        }
-                    });
-                    while (s != null) await DoServerWork(s);
-                }
-                else
-                {
-                    client?.Dispose();
-                    client = null;
-                }
-            }
-            catch (ObjectDisposedException) { }
-            catch (IOException) { }
-            catch (Exception ex)
-            {
-                client?.Dispose();
-                await Task.Delay(10);
-                MessageEvent?.Invoke(ex.Message);
-            }
-        }
-
-        void Foo1()
-        {
-            TcpServer? server = new TcpServer(this);
-            SerialPort? sp = null; 
-            _ = Task.Run(async () => {
-                while (true)
-                {
-                    try
-                    {
-                        await Task.Delay(10);
-                        if (DeviceType != InterfaceType.串口) throw new Exception("类型不匹配");
-                        if (!IsEnableServer) throw new Exception("未开启服务器");
-                        if (sp == null)
-                        {
-                            sp = new SerialPort();
-                            sp.PortName = PortName;
-                            sp.BaudRate = BaudRate;
-                            sp.Parity = Parity;
-                            sp.DataBits = DataBits;
-                            sp.StopBits = StopBits;
-                            sp.Open();
-                            sp.DataReceived += Sp_DataReceived;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        sp?.Dispose();
-                        sp = null;
-                    }
-                }
-            });
-        }
-
-        async Task DoServerWork(Stream s)
-        {
-            if (!IsEnableServer) return;
-            if (s is null) return;
-            var buffer = new byte[1024];
-            int n =await s.ReadAsync(buffer, 0, buffer.Length);
-            if (n > 0)
-            {
-                var str = Encoding.UTF8.GetString(buffer, 0, n);
-                if (string.IsNullOrWhiteSpace(str)) return;
-                MessageEvent?.Invoke($"收到内容：{str}");
-                var str2 = GetResponseString(str);
-                if (string.IsNullOrWhiteSpace(str2)) return;
-                var sendData = Encoding.UTF8.GetBytes(str2);
-                await s.WriteAsync(sendData);
-                await s.FlushAsync();
-            }
-        }
-
-
-        private async void Sp_DataReceived(object sender, SerialDataReceivedEventArgs e)
-        {
-            if (sender is SerialPort sp)
-            {
-                await DoServerWork(sp.BaseStream); 
-            }
-        }
-
-        public string GetResponseString(string _receiveString)
+        protected string GetResponseString(string _receiveString)
         {
             if (IsUseTriggerString && !_receiveString.Trim().Equals(TriggerString)) return "";
 
             if (IsAppendOrderIndex) return SendString + ((OrderIndex++).ToString().PadLeft(6, '0'));
-            
+
             return SendString;
         }
- 
 
+        protected override void OnPropertyChanged(PropertyChangedEventArgs e)
+        {
+            base.OnPropertyChanged(e);
+            if(e!=null && e.PropertyName!=null && (e.PropertyName.Equals(nameof(WorkModel)) || e.PropertyName.Equals(nameof(ConnectionType))||e.PropertyName.Equals(DeviceType)))
+            {
+                try
+                {
+                    pubClient?.Dispose();
+                }
+                catch { }
+                pubClient = null;
+                TriggerCommand.NotifyCanExecuteChanged();
+            }
+        }
+
+        async Task AutoPingWork()
+        {
+            await Task.Delay(1000, cts.Token);
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(1000, cts.Token);
+                    await Ping();
+                }
+                catch { }
+            }
+        }
+
+        async Task CheckClient()
+        {
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(30);
+                    if (pubClient != null)
+                    {
+                        var flag = IsConnected(pubClient);
+                        if (flag)
+                        {
+                            StatusBrush = Brushes.DarkGreen;
+                        }
+                        else
+                        {
+                            pubClient = null;
+                            StatusBrush = Brushes.Red;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    StatusBrush = Brushes.Red;
+                }
+            }
+        }
+
+        //被动模式Job
+        async Task Job1()
+        {
+            //TcpClient? _client=null;//客户端
+            SerialPort? _sp=null;
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(50);
+
+                    if (DeviceType != InterfaceType.串口 || WorkModel != WorkModel.被动接收)
+                    {
+                        if (_sp != null)
+                        {
+                            try
+                            {
+                                _sp.DataReceived -= Sp_DataReceived; 
+                                _sp?.Dispose();
+                                _sp = null;
+                            }
+                            catch (Exception)
+                            {
+                                 
+                            }
+                        }                        
+                    } 
+
+
+                    if (WorkModel == WorkModel.被动接收)
+                    {
+                        if (DeviceType == InterfaceType.串口)
+                        {
+                            if(_sp ==null)
+                            {
+                                _sp = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits); 
+                                _sp.ReadTimeout = 500;
+                                _sp.WriteTimeout = 500;
+                                _sp.Open();
+                                _ = Task.Run(async() => await spWork(_sp));
+                            }  
+                        }
+                        else//以太网
+                        {
+                            if (ConnectionType == ConnectionType.客户端)
+                            {
+                                //客户端，主动连接
+                                if(pubClient==null)
+                                {
+                                    try
+                                    {
+                                        var tmp = new TcpClient();
+                                        tmp.Connect(IP, Port);
+                                        tmp.ReceiveTimeout = 500;
+                                        tmp.SendTimeout = 500;
+                                        pubClient = tmp;
+                                    }
+                                    catch { }
+                                } 
+                            } 
+                        }
+
+                    }
+                }
+                catch (Exception ex)
+                {
+                    //Service.UpdateMessage($"被动接收任务出错：{ex.Message}");
+                }
+            }
+        }
+
+        async Task spWork(SerialPort _sp)
+        {
+            try
+            {
+                _sp.DataReceived += Sp_DataReceived;
+                while(DeviceType == InterfaceType.串口 && WorkModel == WorkModel.被动接收)
+                {
+                    await Task.Delay(50);
+                }
+            }
+            catch (Exception)
+            {
+                if (_sp != null)
+                {
+                    try
+                    {
+                        _sp.DataReceived -= Sp_DataReceived; 
+                        _sp?.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                         
+                    }
+                }
+            } 
+        }
+
+        async Task clientWork()
+        {
+            while(true)
+            {
+                try
+                {
+                    await Task.Delay(10);
+                    if (DeviceType == InterfaceType.以太网 && WorkModel == WorkModel.被动接收)
+                    {
+                        if (pubClient != null) await ReceiveWork(pubClient.GetStream());
+                    }
+                }
+                catch (Exception)
+                {
+                    if (pubClient != null)
+                    {
+                        try
+                        {
+                            pubClient?.Dispose();
+                            pubClient = null;
+                        }
+                        catch (Exception)
+                        {
+
+                        }
+                    }
+                }
+            }
+
+        } 
+
+        private async void Sp_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        {
+            try
+            {
+                if (sender is SerialPort sp)
+                {
+                    await ReceiveWork(sp.BaseStream);
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 被动接收时的作业，被动模式的串口接收，Tcp服务器,Tcp客户端都汇集到这里
+        /// </summary>
+        /// <param name="s"></param>
+        /// <returns></returns>
+        protected virtual async Task ReceiveWork(Stream s)
+        {
+            try
+            { 
+                var buffer=new byte[4096];
+                int n=await s.ReadAsync(buffer, 0, buffer.Length);
+                if (n>0)
+                {
+                    var str = Encoding.UTF8.GetString(buffer, 0, n);
+                    ReceiveString = str;
+                } 
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 用于响应从站的连接请求
+        /// </summary>
+        /// <returns></returns>
+        async Task ServerJob()
+        {
+            await Task.Delay(1000);
+            TcpListener? server = null;
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(10);
+                    if (DeviceType == InterfaceType.以太网 && ConnectionType == ConnectionType.服务器)
+                    {
+                        if (server == null) server = new TcpListener(IPAddress.Any, Port);
+                        server?.Start();
+                        if (server != null)
+                        {
+                            if(pubClient == null) pubClient = server?.AcceptTcpClient(); 
+                        }
+                    }else
+                    {
+                        if(server !=null)
+                        {
+                            try
+                            {
+                                server?.Stop();
+                                server?.Dispose();
+                                server = null;
+                            }
+                            catch (Exception)
+                            { 
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {                 
+                }
+            }
+        }
+         
 
         bool IsConnected(Socket s)
         {
             return !(s.Poll(1000, SelectMode.SelectRead) && (s.Available == 0)) && s.Connected;
-        }
-
+        } 
 
         bool IsConnected(TcpClient client)
         {
-            return IsConnected(client.Client);
-            //return !(client.Client.Poll(1000, SelectMode.SelectRead) && client.Client.Available == 0) && client.Client.Connected;
+            return client !=null && IsConnected(client.Client);
         }
 
-        void ClearReceiveString()
+        [property: JsonIgnore]
+        [RelayCommand(CanExecute = nameof(CanTrigger))]
+        public async Task<string> Trigger()
         {
-            Application.Current?.Dispatcher?.Invoke(() =>
+            try
+            { 
+                if (DeviceType == InterfaceType.以太网)
+                {
+                    for (int i = 0; i < 2; i++)
+                    {
+                        if (pubClient == null)
+                        {
+                            if (ConnectionType == ConnectionType.客户端)
+                            {
+                                pubClient = new TcpClient();
+                                pubClient.Connect(IP, Port);
+                            } 
+                        }
+                        else
+                        {
+                            return await DoClientWork(pubClient.GetStream());
+                        }
+                    } 
+                }
+                else if (DeviceType == InterfaceType.串口)
+                {
+                    using (var sp1 = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits))
+                    {
+                        sp1.ReadTimeout = 500;
+                        sp1.Open();
+                        return await DoClientWork(sp1.BaseStream);
+
+                    } 
+                }
+                StatusBrush = Brushes.DarkGreen;
+                return "";
+            }
+            catch (TimeoutException tex)
+            {
+                //throw new Exception("读取数据超时，请检查设备连接和设置。", tex);
+                StatusBrush = Brushes.Red;
+            }
+            catch (IOException ioex)
+            {
+                //throw new Exception("通信错误，请检查设备连接。", ioex);
+                StatusBrush = Brushes.Red;
+            }
+            catch (Exception ex)
+            {
+                StatusBrush = Brushes.Red;
+            }
+            return ""; 
+        }
+         
+
+        [property: JsonIgnore]
+        [RelayCommand]
+        async Task Ping()
+        {
+            try
+            { 
+                if (DeviceType == InterfaceType.以太网)
+                {
+                    if (ConnectionType == ConnectionType.客户端)
+                    {
+                        if (string.IsNullOrWhiteSpace(IP)) throw new Exception("IP地址不正确或无法获取IP地址");
+                        Ping ping = new Ping();
+                        var res = await ping.SendPingAsync(IP);
+                        if (res.Status == IPStatus.Success)
+                        {
+                            StatusBrush = Brushes.DarkGreen;
+                        }
+                        else
+                        {
+                            throw new Exception(res.Status.ToString());
+                        }
+                    } 
+                    
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusBrush = Brushes.Red; 
+            }
+        }
+        /// <summary>
+        /// 主动模式的作业都汇集在这里，主动模式的串口，Tcp客户端，Tcp服务器都汇集在这里，主动模式是发送字符串，然后等待接收内容
+        /// </summary>
+        /// <param name="s"></param>
+        /// <returns></returns>
+        protected virtual async Task<string> DoClientWork(Stream s)
+        {
+            s.ReadTimeout = 500; 
+            try
             {
                 ReceiveString = "";
-            });
-        }
-
-        void SetReceiveString(string str)
-        {
-            Application.Current?.Dispatcher?.Invoke(() =>
-            {
-                ReceiveString = str;
-            });
-        }
-
-
-        public string Trigger()
-        {
-            Stream? s = null;
-            if (DeviceType == InterfaceType.以太网)
-            {
-                var client = new TcpClient();
-                client.Connect(IP, Port);
-                s = client.GetStream();
+                var writeData = Encoding.UTF8.GetBytes(TriggerString+Environment.NewLine);
+                s.Write(writeData);
+                await s.FlushAsync();
+                await Task.Delay(20);
+                var buffer = new byte[1024];
+                int n = s.Read(buffer, 0, buffer.Length); 
+                if(n>0)
+                {
+                    var readString = Encoding.UTF8.GetString(buffer, 0, n);
+                    ReceiveString = readString;
+                    //Application.Current?.Dispatcher?.Invoke(() =>
+                    //{
+                    //    ReceiveString = readString;
+                    //});
+                    StatusBrush = Brushes.DarkGreen;
+                    return readString;
+                }
+                return "";
             }
-            else if (DeviceType == InterfaceType.串口)
+            catch (Exception)
             {
-                var sp = new System.IO.Ports.SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
-                sp.Open();
-                s = sp.BaseStream;
+                StatusBrush = Brushes.Red;
+                return "";
             }
+        }
+         
 
-            if (s is null) throw new Exception("无法连接到扫码枪");
-            return DoClientWork(s);
+        public void Dispose()
+        {            
+            cts?.Cancel();
         }
 
-        string DoClientWork(Stream s)
+        protected void UpdateMessage(string msg)
         {
-            s.Write(Encoding.UTF8.GetBytes(TriggerString));
-            Thread.Sleep(500);
-            byte[] buffer = new byte[1024];
-            int bytesRead = s.Read(buffer, 0, buffer.Length);
-            Array.Resize(ref buffer, bytesRead);
-            ReceiveString= Encoding.UTF8.GetString(buffer);
-            return ReceiveString;
+            UpdateMessageEvent?.Invoke(msg);
         }
     }
 }

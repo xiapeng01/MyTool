@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:模拟扫码枪"
         mc:Ignorable="d"
+        MouseDoubleClick="Window_MouseDoubleClick"
         Closing="Window_Closing"
         Title="模拟扫码枪" Height="600" Width="1100">
     <Window.DataContext>
@@ -39,7 +40,11 @@
                     </DockPanel> 
                     <DockPanel IsEnabled="{Binding IsEnableServer, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="接口类型"/>
-                        <ComboBox SelectedValue="{Binding DeviceType}" ItemsSource="{Binding DeviceTypeValues}"/>
+                        <UniformGrid Columns="3">
+                            <ComboBox ItemsSource="{Binding DeviceTypeValues}" SelectedItem="{Binding DeviceType}"/>
+                            <ComboBox ItemsSource="{Binding ConnectionTypes}" SelectedItem="{Binding ConnectionType}" Margin="5,0,0,0"/>
+                            <ComboBox ItemsSource="{Binding WorkModelValues}" SelectedItem="{Binding WorkModel}" Margin="5,0,0,0"/>
+                        </UniformGrid>
                     </DockPanel>
                     <DockPanel IsEnabled="{Binding IsEnableServer, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="IP|Port"/>
@@ -67,6 +72,7 @@
                     </DockPanel>
                     <DockPanel>
                         <TextBlock Text="发送内容"/>
+                        <Button Content="发送" Command="{Binding  TriggerCommand}" DockPanel.Dock="Right" Margin="5,0,0,0"/>
                         <TextBox Text="{Binding SendString}"/>
                     </DockPanel>
                     <DockPanel>
