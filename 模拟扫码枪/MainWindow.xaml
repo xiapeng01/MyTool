@@ -34,30 +34,31 @@
                         </Style>
                     </StackPanel.Resources>
                     <DockPanel> 
-                        <CheckBox IsChecked="{Binding IsEnableServer}" Content="启用"/>
-                        <CheckBox IsChecked="{Binding IsUseTriggerString}" Content="使用触发字符串"/>
-                        <CheckBox IsChecked="{Binding IsAppendOrderIndex}" Content="附加流水号"/>
+                        <CheckBox IsChecked="{Binding IsEnable}" Content="启用"/>
+                        <CheckBox IsChecked="{Binding IsUseTriggerString}" Content="校验触发字符串"/>
+                        <CheckBox IsChecked="{Binding AppendHexString}" Content="附加HEX格式"/>
+                        <CheckBox IsChecked="{Binding AppendCRLF}" Content="附加回车换行"/>
                     </DockPanel> 
-                    <DockPanel IsEnabled="{Binding IsEnableServer, Converter={local:BoolReverseConverter}}">
+                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="接口类型"/>
                         <UniformGrid Columns="3">
-                            <ComboBox ItemsSource="{Binding DeviceTypeValues}" SelectedItem="{Binding DeviceType}"/>
-                            <ComboBox ItemsSource="{Binding ConnectionTypes}" SelectedItem="{Binding ConnectionType}" Margin="5,0,0,0"/>
+                            <ComboBox ItemsSource="{Binding DeviceTypeValues}" SelectedItem="{Binding DeviceType}"/> 
                             <ComboBox ItemsSource="{Binding WorkModelValues}" SelectedItem="{Binding WorkModel}" Margin="5,0,0,0"/>
+                            <ComboBox ItemsSource="{Binding ResponseModelValues}" SelectedItem="{Binding ResponseModel}" Margin="5,0,0,0"/>
                         </UniformGrid>
                     </DockPanel>
-                    <DockPanel IsEnabled="{Binding IsEnableServer, Converter={local:BoolReverseConverter}}">
+                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="IP|Port"/>
                         <UniformGrid Columns="2"> 
                             <TextBox Text="{Binding IP}"  />
                             <TextBox Text="{Binding Port}" Margin="5,0,0,0"/>
                         </UniformGrid>
                     </DockPanel>
-                    <DockPanel  IsEnabled="{Binding IsEnableServer, Converter={local:BoolReverseConverter}}">
+                    <DockPanel  IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="串口名"/>
                         <ComboBox SelectedValue="{Binding PortName}" ItemsSource="{Binding PortNames}"/>
                     </DockPanel>
-                    <DockPanel IsEnabled="{Binding IsEnableServer, Converter={local:BoolReverseConverter}}">
+                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="串口参数"/>
                         <DockPanel Margin="0">
                             <TextBox Text="{Binding BaudRate}" MinWidth="80"/>
@@ -73,6 +74,7 @@
                     <DockPanel>
                         <TextBlock Text="发送内容"/>
                         <Button Content="发送" Command="{Binding  TriggerCommand}" DockPanel.Dock="Right" Margin="5,0,0,0"/>
+                        <TextBox Text="{Binding AppendContentLength}" MinWidth="50" ToolTip="附加内容长度" Margin="5,0,0,0" DockPanel.Dock="Right"/>
                         <TextBox Text="{Binding SendString}"/>
                     </DockPanel>
                     <DockPanel>
