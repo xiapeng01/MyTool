@@ -13,26 +13,27 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace 模拟扫码枪
 {
-   public interface IService
-    {
-        InterfaceType DeviceType { get; set; }//接口类型
-        int Port { get; set; }//端口
-        bool IsEnableServer { get; set; }//开启或关闭服务器
+   //public interface IService
+   // {
+   //     InterfaceType DeviceType { get; set; }//接口类型
+   //     int Port { get; set; }//端口
+   //     bool IsEnableServer { get; set; }//开启或关闭服务器
 
-        string GetResponseString(string receiveString);//处理消息
-    }
+   //     string GetResponseString(string receiveString);//处理消息
+   // }
 
     public partial class TcpServer:ObservableObject
     {
-        IService service;
+    //{
+    //    IService service;
               
 
-        public TcpServer(IService _service)
-        {
-            service= _service;
+    //    public TcpServer(IService _service)
+    //    {
+    //        service= _service;
             
-            _ = Task.Run(Server);
-        }  
+    //        _ = Task.Run(Server);
+    //    }  
 
         async Task Server()
         {

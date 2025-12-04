@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.IO.Ports;
@@ -13,97 +14,136 @@ using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 
 namespace 模拟扫码枪
 {
-    public enum InterfaceType { 串口, 以太网 }
-    public enum ConnectionType { 客户端, 服务器 }
-    public enum WorkModel { 主动触发, 被动接收 }
     /// <summary>
     /// 空类，什么都不做
     /// </summary>
-    public partial class ScannerModel:ScannerModelBase
+    public partial class ScannerModel : CommunicationModelBase
     {
-        protected override Task ReceiveWork(Stream s)
-        {
-            return DoServerWork(s);
-        }
-
-        async Task DoServerWork(Stream s)
-        {
-
-
-            if (!IsEnableClient) return;
-            if (s is null) return;
-            if (!s.CanRead) return;
-            if (!s.CanWrite) return;
-            var buffer = new byte[1024];
-            int n = await s.ReadAsync(buffer, 0, buffer.Length);
-            if (n > 0)
-            {
-                var str = Encoding.UTF8.GetString(buffer, 0, n);
-                if (string.IsNullOrWhiteSpace(str)) return;
-                UpdateMessage($"收到内容：{str}");
-                ReceiveString = str;
-                var str2 = GetResponseString(str);
-                if (string.IsNullOrWhiteSpace(str2)) return;
-                var sendData = Encoding.UTF8.GetBytes(str2);
-                await s.WriteAsync(sendData);
-                await s.FlushAsync();
-            }
-        }
-  
-        protected override async Task<string> DoClientWork(Stream s)
-        {
-            try
-            {
-                var str = GetResponseString(TriggerString);
-                if (string.IsNullOrEmpty(str)) return "";
-                var sendData = Encoding.UTF8.GetBytes(str);
-                await s.WriteAsync(sendData);
-                await s.FlushAsync();
-                return "";
-            }
-            catch (Exception)
-            {
-                
-            }
-            return "";
-        }
+ 
     }
 
-    public partial class ScannerModelBase:ObservableObject,IDisposable
-    { 
+    public partial class CommunicationModelBase : ObservableObject, IDisposable
+    {
+        public enum IInterfaceType { 串口, TCP客户端, TCP服务器 }
+        /// <summary>
+        /// 主动触发=先发后收；被动接收=先收后发；
+        /// </summary>
+        public enum IWorkModel { 主动触发, 被动接收,仅发送,仅接收 }
+
+        public enum IResponseModel {常规,附加流水号,附加随机数,解析发送 }//响应模式
+
+        protected string GetResponseString(string _receiveString)
+        {
+            if (IsUseTriggerString && !_receiveString.Trim().Equals(TriggerString)) return "";
+
+            switch (ResponseModel)
+            {
+                default:
+                case IResponseModel.常规:
+                    return SendString;
+                case IResponseModel.附加流水号:
+                    var n1 = OrderIndex++;
+                    var str1 = (AppendHexString ? n1.ToString("X") : n1.ToString());
+                    if (str1.Length < AppendContentLength) str1 = str1.PadLeft(AppendContentLength, '0');
+                    else if (str1.Length > AppendContentLength) str1 = str1.Substring(str1.Length - AppendContentLength, AppendContentLength);
+                    return $"{SendString}{str1}";
+                case IResponseModel.附加随机数:
+                    var n2 = new Random(Guid.NewGuid().GetHashCode()).Next(0, int.MaxValue);
+                    var str2 = (AppendHexString ? n2.ToString("X") : n2.ToString());
+                    if (str2.Length < AppendContentLength) str2 = str2.PadLeft(AppendContentLength, '0');
+                    else if (str2.Length > AppendContentLength) str2 = str2.Substring(str2.Length - AppendContentLength, AppendContentLength);
+                    return $"{SendString}{str2}"; ;
+                case IResponseModel.解析发送:
+                    var group = SendString.Split("|");
+                    var n3 = new Random(Guid.NewGuid().GetHashCode()).Next(0, group.Length);
+                    return group[n3];
+            }
+        }
+
+        private static string CmdPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.System) + "\\cmd.exe";
+
+        public static string RunCmdCommand(string command)
+        {
+            using (Process process = new Process())
+            {
+                command = command.Trim().TrimEnd('&') + "&exit";
+
+                process.StartInfo.FileName = CmdPath;
+                process.StartInfo.CreateNoWindow = true;// 隐藏窗口运行
+                process.StartInfo.RedirectStandardError = true;// 重定向错误流
+                process.StartInfo.RedirectStandardInput = true;// 重定向输入流
+                process.StartInfo.RedirectStandardOutput = true;// 重定向输出流
+                process.StartInfo.UseShellExecute = false;
+
+                process.Start();
+
+                process.StandardInput.WriteLine(command);// 写入Cmd命令
+                process.StandardInput.AutoFlush = true;
+
+                string output = process.StandardOutput.ReadToEnd();//读取结果
+                process.WaitForExit();
+                process.Close();
+                return output;
+            }
+        }
+
+        public static async Task<string> RunCmdCommandAsync(string command)
+        {
+            using (Process process = new Process())
+            {
+                command = command.Trim().TrimEnd('&') + "&exit";
+
+                process.StartInfo.FileName = CmdPath;
+                process.StartInfo.CreateNoWindow = true;// 隐藏窗口运行
+                process.StartInfo.RedirectStandardError = true;// 重定向错误流
+                process.StartInfo.RedirectStandardInput = true;// 重定向输入流
+                process.StartInfo.RedirectStandardOutput = true;// 重定向输出流
+                process.StartInfo.UseShellExecute = false;
+
+                process.Start();
+
+                process.StandardInput.WriteLine(command);// 写入Cmd命令
+                process.StandardInput.AutoFlush = true;
+
+                string output = process.StandardOutput.ReadToEnd();//读取结果
+                await process.WaitForExitAsync();
+                process.Close();
+                return output;
+            }
+        }
+
+
+
         public event Action<string>? UpdateMessageEvent;
+        public event Action<string>? ReceiveCodeEvent;
 
         [ObservableProperty]
-        bool isEnableClient = true;
-
-        [ObservableProperty]
-        bool isEnableServer = false;//启用虚拟服务器
+        bool isEnable = true;
 
         [ObservableProperty]
         bool isUseTriggerString = false;//使用触发字符串
 
         [ObservableProperty]
-        string sendString = "SendString";
-
-        [ObservableProperty]
-        bool isAppendOrderIndex = false;//是否自动附加流水号
+        string sendString = "SendString"; 
 
         [ObservableProperty]
         int orderIndex = 0;//流水号 
 
         [JsonIgnore]
-        public InterfaceType[] DeviceTypeValues => Enum.GetValues(typeof(InterfaceType)).Cast<InterfaceType>().ToArray();
-        [JsonIgnore]        
-        public ConnectionType[] ConnectionTypes => Enum.GetValues(typeof(ConnectionType)).Cast<ConnectionType>().ToArray();
+        public IInterfaceType[] DeviceTypeValues => Enum.GetValues(typeof(IInterfaceType)).Cast<IInterfaceType>().ToArray();
 
         [JsonIgnore]
-        public WorkModel[] WorkModelValues=> Enum.GetValues(typeof(WorkModel)).Cast<WorkModel>().ToArray();
+        public IWorkModel[] WorkModelValues => Enum.GetValues(typeof(IWorkModel)).Cast<IWorkModel>().ToArray();
+
+        [JsonIgnore]
+        public IResponseModel[] ResponseModelValues=> Enum.GetValues(typeof(IResponseModel)).Cast<IResponseModel>().ToArray();
 
         [JsonIgnore]
         public string[] PortNames => SerialPort.GetPortNames();
@@ -113,14 +153,15 @@ namespace 模拟扫码枪
         [JsonIgnore]
         public StopBits[] StopBitsValues => Enum.GetValues(typeof(StopBits)).Cast<StopBits>().ToArray();
 
-        [ObservableProperty]
-        ConnectionType connectionType = ConnectionType.客户端;//连接方式
 
         [ObservableProperty]
-        InterfaceType deviceType = InterfaceType.以太网;
+        IInterfaceType deviceType = IInterfaceType.TCP客户端;
 
         [ObservableProperty]
-        WorkModel workModel = WorkModel.主动触发;//默认是主动触发方式
+        IWorkModel workModel = IWorkModel.主动触发;//默认是主动触发方式
+
+        [ObservableProperty]
+        IResponseModel responseModel = IResponseModel.常规;//响应内容
 
         [ObservableProperty]
         string portName = "COM1";
@@ -149,8 +190,14 @@ namespace 模拟扫码枪
         [ObservableProperty]
         string receiveString = "";
 
-        [JsonIgnore]
-        public bool CanTrigger => WorkModel == WorkModel.主动触发;
+        [ObservableProperty]
+        int appendContentLength = 6;
+
+        [ObservableProperty]
+        bool appendHexString = false;
+
+        [ObservableProperty]
+        bool appendCRLF = false;
 
         [property: JsonIgnore]
         [ObservableProperty]
@@ -159,10 +206,14 @@ namespace 模拟扫码枪
         CancellationTokenSource cts = new CancellationTokenSource();
 
         TcpClient? pubClient;//TCP客户端 
-        public ScannerModelBase()
+
+        [JsonIgnore]
+        public bool CanTrigger => WorkModel == IWorkModel.主动触发 || WorkModel == IWorkModel.仅发送;
+
+        public CommunicationModelBase()
         {
             //服务器响应客户端连接线程
-            _ = Task.Run(ServerJob, cts.Token);
+            _ = Task.Run(AcceptClientTask, cts.Token);
 
             //检测连接状态线程
             _ = Task.Run(AutoPingWork, cts.Token);
@@ -174,22 +225,16 @@ namespace 模拟扫码枪
             _ = Task.Run(clientWork, cts.Token);
 
             //被动接收线程
-            _ = Task.Run(Job1, cts.Token); 
-        }
-
-        protected string GetResponseString(string _receiveString)
-        {
-            if (IsUseTriggerString && !_receiveString.Trim().Equals(TriggerString)) return "";
-
-            if (IsAppendOrderIndex) return SendString + ((OrderIndex++).ToString().PadLeft(6, '0'));
-
-            return SendString;
+            _ = Task.Run(Job1, cts.Token);
         }
 
         protected override void OnPropertyChanged(PropertyChangedEventArgs e)
         {
             base.OnPropertyChanged(e);
-            if(e!=null && e.PropertyName!=null && (e.PropertyName.Equals(nameof(WorkModel)) || e.PropertyName.Equals(nameof(ConnectionType))||e.PropertyName.Equals(DeviceType)))
+            if (e != null && e.PropertyName != null && (e.PropertyName.Equals(nameof(WorkModel)) || e.PropertyName.Equals(DeviceType) || e.PropertyName.Equals(IsEnable)
+                || e.PropertyName.Equals(IP) || e.PropertyName.Equals(Port)
+                || e.PropertyName.Equals(PortName) || e.PropertyName.Equals(BaudRate) || e.PropertyName.Equals(DataBits) || e.PropertyName.Equals(Parity) || e.PropertyName.Equals(StopBits)
+                ))
             {
                 try
                 {
@@ -247,50 +292,50 @@ namespace 模拟扫码枪
         async Task Job1()
         {
             //TcpClient? _client=null;//客户端
-            SerialPort? _sp=null;
+            SerialPort? _sp = null;
             while (true)
             {
                 try
                 {
                     await Task.Delay(50);
 
-                    if (DeviceType != InterfaceType.串口 || WorkModel != WorkModel.被动接收)
+                    if (DeviceType != IInterfaceType.串口 || WorkModel != IWorkModel.被动接收)
                     {
                         if (_sp != null)
                         {
                             try
                             {
-                                _sp.DataReceived -= Sp_DataReceived; 
+                                _sp.DataReceived -= Sp_DataReceived;
                                 _sp?.Dispose();
                                 _sp = null;
                             }
                             catch (Exception)
                             {
-                                 
+
                             }
-                        }                        
-                    } 
+                        }
+                    }
 
 
-                    if (WorkModel == WorkModel.被动接收)
+                    if (IsEnable && WorkModel == IWorkModel.被动接收)
                     {
-                        if (DeviceType == InterfaceType.串口)
+                        if (DeviceType == IInterfaceType.串口)
                         {
-                            if(_sp ==null)
+                            if (_sp == null)
                             {
-                                _sp = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits); 
+                                _sp = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits);
                                 _sp.ReadTimeout = 500;
                                 _sp.WriteTimeout = 500;
                                 _sp.Open();
-                                _ = Task.Run(async() => await spWork(_sp));
-                            }  
+                                _ = Task.Run(async () => await spWork(_sp));
+                            }
                         }
                         else//以太网
                         {
-                            if (ConnectionType == ConnectionType.客户端)
+                            if (DeviceType == IInterfaceType.TCP客户端)
                             {
                                 //客户端，主动连接
-                                if(pubClient==null)
+                                if (pubClient == null)
                                 {
                                     try
                                     {
@@ -301,15 +346,15 @@ namespace 模拟扫码枪
                                         pubClient = tmp;
                                     }
                                     catch { }
-                                } 
-                            } 
+                                }
+                            }
                         }
 
                     }
                 }
                 catch (Exception ex)
                 {
-                    //Service.UpdateMessage($"被动接收任务出错：{ex.Message}");
+                    UpdateFilterMessage($"【{IP}:{Port}/{PortName}】被动接收模式出现错误：{ex.Message}");
                 }
             }
         }
@@ -319,10 +364,27 @@ namespace 模拟扫码枪
             try
             {
                 _sp.DataReceived += Sp_DataReceived;
-                while(DeviceType == InterfaceType.串口 && WorkModel == WorkModel.被动接收)
+                while (true)
                 {
-                    await Task.Delay(50);
+                    if (IsEnable && IsEnable && DeviceType == IInterfaceType.串口 && WorkModel == IWorkModel.被动接收)
+                    {
+                        await Task.Delay(50);
+                    }
+                    else if (_sp != null)
+                    {
+                        try
+                        {
+                            _sp.DataReceived -= Sp_DataReceived;
+                            _sp?.Dispose();
+                        }
+                        catch (Exception)
+                        {
+
+                        }
+                    }
+
                 }
+
             }
             catch (Exception)
             {
@@ -330,30 +392,30 @@ namespace 模拟扫码枪
                 {
                     try
                     {
-                        _sp.DataReceived -= Sp_DataReceived; 
+                        _sp.DataReceived -= Sp_DataReceived;
                         _sp?.Dispose();
                     }
                     catch (Exception)
                     {
-                         
+
                     }
                 }
-            } 
+            }
         }
 
         async Task clientWork()
         {
-            while(true)
+            while (true)
             {
                 try
                 {
                     await Task.Delay(10);
-                    if (DeviceType == InterfaceType.以太网 && WorkModel == WorkModel.被动接收)
+                    if (IsEnable && (DeviceType == IInterfaceType.TCP客户端 || DeviceType == IInterfaceType.TCP服务器) && WorkModel == IWorkModel.被动接收)
                     {
                         if (pubClient != null) await ReceiveWork(pubClient.GetStream());
                     }
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     if (pubClient != null)
                     {
@@ -370,7 +432,7 @@ namespace 模拟扫码枪
                 }
             }
 
-        } 
+        }
 
         private async void Sp_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
@@ -392,23 +454,44 @@ namespace 模拟扫码枪
         protected virtual async Task ReceiveWork(Stream s)
         {
             try
-            { 
-                var buffer=new byte[4096];
-                int n=await s.ReadAsync(buffer, 0, buffer.Length);
-                if (n>0)
+            {
+                StatusBrush = Brushes.DarkGreen;
+                if (!IsEnable || s is null || !s.CanRead || !s.CanWrite) return;
+                var buffer = new byte[4096];
+                int n = await s.ReadAsync(buffer, 0, buffer.Length);
+                if (n > 0)
                 {
-                    var str = Encoding.UTF8.GetString(buffer, 0, n);
-                    ReceiveString = str;
-                } 
+                    if (WorkModel == IWorkModel.仅接收)
+                    {
+                        var str = Encoding.UTF8.GetString(buffer, 0, n);
+                        ReceiveString = str;
+                        ReceiveCodeEvent?.Invoke(ReceiveString);
+                    }
+                    else if (WorkModel == IWorkModel.被动接收)
+                    {
+                        var str = Encoding.UTF8.GetString(buffer, 0, n);
+                        if (string.IsNullOrWhiteSpace(str)) return;
+                        UpdateMessage($"收到内容：{str}");
+                        ReceiveString = str;
+                        var str2 = GetResponseString(str);
+                        if (string.IsNullOrWhiteSpace(str2)) return;
+                        var sendData = Encoding.UTF8.GetBytes(str2);
+                        await s.WriteAsync(sendData);
+                        await s.FlushAsync();
+                    }
+                }
+                    
             }
             catch { }
         }
+
+        CancellationTokenSource? ctsServer = null;
 
         /// <summary>
         /// 用于响应从站的连接请求
         /// </summary>
         /// <returns></returns>
-        async Task ServerJob()
+        async Task AcceptClientTask()
         {
             await Task.Delay(1000);
             TcpListener? server = null;
@@ -417,17 +500,18 @@ namespace 模拟扫码枪
                 try
                 {
                     await Task.Delay(10);
-                    if (DeviceType == InterfaceType.以太网 && ConnectionType == ConnectionType.服务器)
+                    if (IsEnable && DeviceType == IInterfaceType.TCP服务器)
                     {
                         if (server == null) server = new TcpListener(IPAddress.Any, Port);
                         server?.Start();
-                        if (server != null)
+                        if (server != null && pubClient == null)
                         {
-                            if(pubClient == null) pubClient = server?.AcceptTcpClient(); 
+                            pubClient = await server.AcceptTcpClientAsync(cts.Token);
                         }
-                    }else
+                    }
+                    else
                     {
-                        if(server !=null)
+                        if (server != null)
                         {
                             try
                             {
@@ -436,26 +520,43 @@ namespace 模拟扫码枪
                                 server = null;
                             }
                             catch (Exception)
-                            { 
+                            {
                             }
                         }
                     }
                 }
                 catch (Exception ex)
-                {                 
+                {
+                    if (ex.Message.Contains("通常每个套接字地址(协议/网络地址/端口)只允许使用一次"))
+                    {
+                        var msg = await RunCmdCommandAsync($"netstat -ano|findstr 127.0.0.1:{Port}");
+                        UpdateFilterMessage($"作为服务器需要使用的端口被占用，请查看信息：\n{msg}");
+                    }
+                    else
+                    {
+                        UpdateFilterMessage($"【{IP}:{Port}/{PortName}】服务器模式出现错误：{ex.Message}");
+                    }
+                }
+                finally
+                {
+                    try
+                    {
+                        ctsServer?.Cancel();
+                    }
+                    catch { }
                 }
             }
         }
-         
+
 
         bool IsConnected(Socket s)
         {
-            return !(s.Poll(1000, SelectMode.SelectRead) && (s.Available == 0)) && s.Connected;
-        } 
+            return s != null && !(s.Poll(1000, SelectMode.SelectRead) && (s.Available == 0)) && s.Connected;
+        }
 
         bool IsConnected(TcpClient client)
         {
-            return client !=null && IsConnected(client.Client);
+            return client != null && IsConnected(client.Client);
         }
 
         [property: JsonIgnore]
@@ -463,34 +564,43 @@ namespace 模拟扫码枪
         public async Task<string> Trigger()
         {
             try
-            { 
-                if (DeviceType == InterfaceType.以太网)
+            {
+                if (DeviceType == IInterfaceType.TCP客户端 || DeviceType == IInterfaceType.TCP服务器)
                 {
                     for (int i = 0; i < 2; i++)
                     {
-                        if (pubClient == null)
+                        if (DeviceType == IInterfaceType.TCP服务器 && pubClient is null)
                         {
-                            if (ConnectionType == ConnectionType.客户端)
-                            {
-                                pubClient = new TcpClient();
-                                pubClient.Connect(IP, Port);
-                            } 
+                            UpdateFilterMessage("当前模式为TCP服务器，且无有效客户端连接");
                         }
-                        else
+
+                        if (DeviceType == IInterfaceType.TCP客户端 && pubClient == null)
+                        {
+                            pubClient = new TcpClient();
+                            pubClient.Connect(IP, Port);
+                        }
+                        else if (pubClient != null)
                         {
                             return await DoClientWork(pubClient.GetStream());
                         }
-                    } 
+                    }
                 }
-                else if (DeviceType == InterfaceType.串口)
+                else if (DeviceType == IInterfaceType.串口)
                 {
-                    using (var sp1 = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits))
+                    try
                     {
-                        sp1.ReadTimeout = 500;
-                        sp1.Open();
-                        return await DoClientWork(sp1.BaseStream);
+                        using (var sp1 = new SerialPort(PortName, BaudRate, Parity, DataBits, StopBits))
+                        {
+                            sp1.ReadTimeout = 500;
+                            sp1.Open();
+                            return await DoClientWork(sp1.BaseStream);
 
-                    } 
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        UpdateFilterMessage($"串口模式触发时发生错误：{ex.Message}");
+                    }
                 }
                 StatusBrush = Brushes.DarkGreen;
                 return "";
@@ -509,38 +619,34 @@ namespace 模拟扫码枪
             {
                 StatusBrush = Brushes.Red;
             }
-            return ""; 
-        }
-         
+            return "";
 
+
+        }
         [property: JsonIgnore]
         [RelayCommand]
         async Task Ping()
         {
             try
-            { 
-                if (DeviceType == InterfaceType.以太网)
+            {
+                if (DeviceType == IInterfaceType.TCP客户端)
                 {
-                    if (ConnectionType == ConnectionType.客户端)
+                    if (string.IsNullOrWhiteSpace(IP)) throw new Exception("IP地址不正确或无法获取IP地址");
+                    Ping ping = new Ping();
+                    var res = await ping.SendPingAsync(IP);
+                    if (res.Status == IPStatus.Success)
                     {
-                        if (string.IsNullOrWhiteSpace(IP)) throw new Exception("IP地址不正确或无法获取IP地址");
-                        Ping ping = new Ping();
-                        var res = await ping.SendPingAsync(IP);
-                        if (res.Status == IPStatus.Success)
-                        {
-                            StatusBrush = Brushes.DarkGreen;
-                        }
-                        else
-                        {
-                            throw new Exception(res.Status.ToString());
-                        }
-                    } 
-                    
+                        StatusBrush = Brushes.DarkGreen;
+                    }
+                    else
+                    {
+                        throw new Exception(res.Status.ToString());
+                    }
                 }
             }
             catch (Exception ex)
             {
-                StatusBrush = Brushes.Red; 
+                StatusBrush = Brushes.Red;
             }
         }
         /// <summary>
@@ -550,45 +656,67 @@ namespace 模拟扫码枪
         /// <returns></returns>
         protected virtual async Task<string> DoClientWork(Stream s)
         {
-            s.ReadTimeout = 500; 
+            s.ReadTimeout = 500;
             try
             {
-                ReceiveString = "";
-                var writeData = Encoding.UTF8.GetBytes(TriggerString+Environment.NewLine);
-                s.Write(writeData);
-                await s.FlushAsync();
-                await Task.Delay(20);
-                var buffer = new byte[1024];
-                int n = s.Read(buffer, 0, buffer.Length); 
-                if(n>0)
+                if(WorkModel == IWorkModel.仅发送)
                 {
-                    var readString = Encoding.UTF8.GetString(buffer, 0, n);
-                    ReceiveString = readString;
-                    //Application.Current?.Dispatcher?.Invoke(() =>
-                    //{
-                    //    ReceiveString = readString;
-                    //});
+                    var str = GetResponseString(TriggerString);
+                    if (string.IsNullOrEmpty(str)) return "";
+                    var sendData = Encoding.UTF8.GetBytes(str + (AppendCRLF ? Environment.NewLine : ""));
+                    await s.WriteAsync(sendData);
+                    await s.FlushAsync();
                     StatusBrush = Brushes.DarkGreen;
-                    return readString;
+                    return "";
+                }else if (WorkModel == IWorkModel.主动触发)//主动触发时是要发送触发字符串的
+                {
+                    ReceiveString = "";
+                    var writeData = Encoding.UTF8.GetBytes(TriggerString + (AppendCRLF ? Environment.NewLine : ""));
+                    s.Write(writeData);
+                    await s.FlushAsync();
+                    await Task.Delay(20);
+                    var buffer = new byte[4096];
+                    int n = s.Read(buffer, 0, buffer.Length);
+                    if (n > 0)
+                    {
+                        ReceiveString = Encoding.UTF8.GetString(buffer, 0, n);
+                        ReceiveCodeEvent?.Invoke(ReceiveString);
+                        StatusBrush = Brushes.DarkGreen;
+                        return ReceiveString;
+                    }
+                    return "";
                 }
                 return "";
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 StatusBrush = Brushes.Red;
+                UpdateFilterMessage($"【{IP}:{Port}/{PortName}】客户端模式出现错误：{ex.Message}");
                 return "";
+
             }
         }
-         
+
 
         public void Dispose()
-        {            
+        {
             cts?.Cancel();
+        }
+
+        string lastMsg = "";
+
+        protected void UpdateFilterMessage(string msg)
+        {
+            if (msg != lastMsg)
+            {
+                UpdateMessageEvent?.Invoke(msg);
+                lastMsg = msg;
+            }
         }
 
         protected void UpdateMessage(string msg)
         {
             UpdateMessageEvent?.Invoke(msg);
         }
-    }
+    } 
 }
