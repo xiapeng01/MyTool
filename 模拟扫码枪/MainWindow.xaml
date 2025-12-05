@@ -39,7 +39,7 @@
                         <CheckBox IsChecked="{Binding AppendHexString}" Content="附加HEX格式"/>
                         <CheckBox IsChecked="{Binding AppendCRLF}" Content="附加回车换行"/>
                     </DockPanel> 
-                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
+                    <DockPanel  IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="接口类型"/>
                         <UniformGrid Columns="3">
                             <ComboBox ItemsSource="{Binding DeviceTypeValues}" SelectedItem="{Binding DeviceType}"/> 
@@ -47,18 +47,18 @@
                             <ComboBox ItemsSource="{Binding ResponseModelValues}" SelectedItem="{Binding ResponseModel}" Margin="5,0,0,0"/>
                         </UniformGrid>
                     </DockPanel>
-                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
+                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}" Visibility="{Binding IsNetwork,Converter={local:BoolToVisibilityConverter }}">
                         <TextBlock Text="IP|Port"/>
                         <UniformGrid Columns="2"> 
                             <TextBox Text="{Binding IP}"  />
                             <TextBox Text="{Binding Port}" Margin="5,0,0,0"/>
                         </UniformGrid>
                     </DockPanel>
-                    <DockPanel  IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
+                    <DockPanel  IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}" Visibility="{Binding IsSerialPort ,Converter={local:BoolToVisibilityConverter}}">
                         <TextBlock Text="串口名"/>
                         <ComboBox SelectedValue="{Binding PortName}" ItemsSource="{Binding PortNames}"/>
                     </DockPanel>
-                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
+                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}" Visibility="{Binding IsSerialPort ,Converter={local:BoolToVisibilityConverter}}">
                         <TextBlock Text="串口参数"/>
                         <DockPanel Margin="0">
                             <TextBox Text="{Binding BaudRate}" MinWidth="80"/>
@@ -73,16 +73,18 @@
                     </DockPanel>
                     <DockPanel>
                         <TextBlock Text="发送内容"/>
-                        <Button Content="发送" Command="{Binding  TriggerCommand}" DockPanel.Dock="Right" Margin="5,0,0,0"/>
-                        <TextBox Text="{Binding AppendContentLength}" MinWidth="50" ToolTip="附加内容长度" Margin="5,0,0,0" DockPanel.Dock="Right"/>
+                        <Button Content="发送" Command="{Binding  SendCommand}" DockPanel.Dock="Right" Margin="5,0,0,0"/>
+                        <TextBox Text="{Binding AutoSendInterval}" MinWidth="50" Margin="5,0,0,0" DockPanel.Dock="Right"/>
                         <TextBox Text="{Binding SendString}"/>
                     </DockPanel>
                     <DockPanel>
                         <TextBlock Text="接收内容"/>
+                        <CheckBox IsChecked="{Binding IsTransmitReceiveDataToStandardInput}" IsEnabled="{Binding IsOnlyReceiveModel}" VerticalAlignment="Center" Content="转发仅接收内容" DockPanel.Dock="Right" Margin="5,0,0,0"/>
                         <TextBox Text="{Binding ReceiveString}"/>
                     </DockPanel>
                     <DockPanel>
                         <TextBlock Text="流水号"/>
+                        <TextBox Text="{Binding AppendContentLength}" MinWidth="50" ToolTip="附加内容长度" Margin="5,0,0,0" DockPanel.Dock="Right"/>
                         <TextBox Text="{Binding OrderIndex}"/>
                     </DockPanel> 
                 </StackPanel>
@@ -100,6 +102,8 @@
             <ContentControl Content="{Binding Scanners[1]}"/>
             <ContentControl Content="{Binding Scanners[2]}"/>
             <ContentControl Content="{Binding Scanners[3]}"/>
+            <ContentControl Content="{Binding Scanners[4]}"/>
+            <ContentControl Content="{Binding Scanners[5]}"/>
         </UniformGrid>
 
     </Grid>

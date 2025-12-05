@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
@@ -9,12 +10,13 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using System.Windows;
+using Application = System.Windows.Application;
 
 namespace 模拟扫码枪
 {
     public partial class MainWindowViewModel:ObservableObject
     {
-        public ScannerModel[] Scanners { get; set; } = new ScannerModel[4];
+        public ScannerModel[] Scanners { get; set; } = new ScannerModel[6];
 
         [ObservableProperty]
         public string msg  ;
@@ -26,20 +28,34 @@ namespace 模拟扫码枪
 
         public MainWindowViewModel()
         {
-            if(File.Exists(settingFileName))
+            try
             {
-                var obj=JsonSerializer.Deserialize<ScannerModel[]>(File.ReadAllText(settingFileName));
-                if(obj!=null&&obj.Length==Scanners.Length)
+                if (File.Exists(settingFileName))
                 {
-                    for (int i = 0; i < Scanners.Length; i++)
+                    var obj = JsonSerializer.Deserialize<ScannerModel[]>(File.ReadAllText(settingFileName));
+                    if (obj != null && obj.Length == Scanners.Length)
                     {
-                        Scanners[i]= obj[i] ;
-                    } 
+                        for (int i = 0; i < Scanners.Length; i++)
+                        {
+                            Scanners[i] = obj[i];
+                        }
+                    }
+                }
+                for (int i = 0; i < Scanners.Length; i++)
+                {
+                    if (Scanners[i] == null) throw new Exception();
+                    Scanners[i].UpdateMessageEvent += AddMessage;
                 }
             }
-            for (int i = 0; i < Scanners.Length; i++)
-            { 
-                Scanners[i].UpdateMessageEvent += AddMessage;
+            catch (Exception)
+            {
+                for(int i=0;i < Scanners.Length; i++)
+                {
+                    Scanners[i] = new ScannerModel();
+                    Scanners[i].UpdateMessageEvent += AddMessage;
+                    Scanners[i].PortName = "COM"+i*2+2;
+                    Scanners[i].Port = 8080 + i;
+                }
             }
         }
 
