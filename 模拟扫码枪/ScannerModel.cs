@@ -30,6 +30,7 @@ namespace 模拟扫码枪
  
     }
 
+
     public partial class CommunicationModelBase : ObservableObject, IDisposable
     {
         public enum IInterfaceType { 串口, TCP客户端, TCP服务器 }
@@ -230,7 +231,7 @@ namespace 模拟扫码枪
             _ = Task.Run(AcceptClientTask, cts.Token);
 
             //检测连接状态线程
-            _ = Task.Run(AutoPingTask, cts.Token);
+            //_ = Task.Run(AutoPingTask, cts.Token);
 
             //检测连接是否是否正常
             _ = Task.Run(CheckClientTask, cts.Token);
@@ -297,19 +298,19 @@ namespace 模拟扫码枪
                 try
                 {
                     await Task.Delay(30);
-                    if (pubClient != null)
+                    if (DeviceType == IInterfaceType.TCP客户端 || DeviceType == IInterfaceType.TCP服务器)
                     {
-                        var flag = IsConnected(pubClient);
-                        if (flag)
+                        if (DeviceType == IInterfaceType.TCP客户端 && pubClient == null)
                         {
-                            StatusBrush = Brushes.DarkGreen;
+                            pubClient = new TcpClient();
+                            pubClient.Connect(IP, Port);
                         }
-                        else
-                        {
-                            pubClient = null;
-                            StatusBrush = Brushes.Red;
-                        }
+
+                        var flag = pubClient != null && IsConnected(pubClient);
+                        StatusBrush = flag ? Brushes.DarkGreen : Brushes.Red;
+                        if (!flag) pubClient = null;
                     }
+
                 }
                 catch (Exception)
                 {
@@ -493,21 +494,23 @@ namespace 模拟扫码枪
                 {
                     if (WorkModel == IWorkModel.仅接收)
                     {
-                        var str = Encoding.UTF8.GetString(buffer, 0, n);
+                        var str = Encoding.UTF8.GetString(buffer, 0, n).Trim();
+                        if (string.IsNullOrWhiteSpace(str)) return;
+                        UpdateMessage($"收到内容：{str}");
                         ReceiveString = str;
                         ReceiveCodeEvent?.Invoke(ReceiveString);
                         if (IsTransmitReceiveDataToStandardInput)
                         {
-                            SendKeys.SendWait(str);
+                            SendKeys.SendWait(ReceiveString);
                         }
                     }
                     else if (WorkModel == IWorkModel.被动接收)
                     {
-                        var str = Encoding.UTF8.GetString(buffer, 0, n);
+                        var str = Encoding.UTF8.GetString(buffer, 0, n).Trim();
                         if (string.IsNullOrWhiteSpace(str)) return;
                         UpdateMessage($"收到内容：{str}");
                         ReceiveString = str;
-                        var str2 = GetResponseString(str);
+                        var str2 = GetResponseString(ReceiveString);
                         if (string.IsNullOrWhiteSpace(str2)) return;
                         var sendData = Encoding.UTF8.GetBytes(str2);
                         await s.WriteAsync(sendData);
@@ -674,7 +677,7 @@ namespace 模拟扫码枪
                 {
                     await Trigger();
                     await Task.Delay(AutoSendInterval);
-                } while (IsEnable && AutoSendInterval > 0); 
+                } while (IsEnable && AutoSendInterval > 0);
             }
             catch (TimeoutException tex)
             {
@@ -689,7 +692,7 @@ namespace 模拟扫码枪
             catch (Exception ex)
             {
                 StatusBrush = Brushes.Red;
-            } 
+            }
         }
 
 
@@ -704,14 +707,16 @@ namespace 模拟扫码枪
                     if (string.IsNullOrWhiteSpace(IP)) throw new Exception("IP地址不正确或无法获取IP地址");
                     Ping ping = new Ping();
                     var res = await ping.SendPingAsync(IP);
-                    if (res.Status == IPStatus.Success)
-                    {
-                        StatusBrush = Brushes.DarkGreen;
-                    }
-                    else
-                    {
-                        throw new Exception(res.Status.ToString());
-                    }
+                    UpdateMessage($"PING【{IP}】:{res.Status.ToString()}");
+                    //if (res.Status == IPStatus.Success)
+                    //{
+                    //    StatusBrush = Brushes.DarkGreen;
+                    //}
+                    //else
+                    //{
+                    //    throw new Exception(res.Status.ToString());
+                    //}
+
                 }
             }
             catch (Exception ex)
@@ -742,16 +747,16 @@ namespace 模拟扫码枪
                 else if (WorkModel == IWorkModel.主动触发)//主动触发时是要发送触发字符串的
                 {
                     ReceiveString = "";
-                    var writeData = Encoding.UTF8.GetBytes(TriggerString + (AppendCRLF ? Environment.NewLine : ""));
+                    var writeData = Encoding.UTF8.GetBytes(AppendCRLF ? TriggerString + Environment.NewLine : TriggerString);
                     s.Write(writeData);
                     await s.FlushAsync();
-                    if (DeviceType == IInterfaceType.串口)
-                        await Task.Delay(50);
+                    if (DeviceType == IInterfaceType.串口) await Task.Delay(50);
+
                     var buffer = new byte[4096];
                     int n = s.Read(buffer, 0, buffer.Length);
                     if (n > 0)
                     {
-                        ReceiveString = Encoding.UTF8.GetString(buffer, 0, n);
+                        ReceiveString = Encoding.UTF8.GetString(buffer, 0, n).Trim();
                         ReceiveCodeEvent?.Invoke(ReceiveString);
                         StatusBrush = Brushes.DarkGreen;
                         return ReceiveString;
@@ -788,16 +793,15 @@ namespace 模拟扫码枪
         protected void UpdateFilterMessage(string msg)
         {
             if (msg != lastMsg)
-            {
+            { 
                 UpdateMessageEvent?.Invoke(msg);
                 lastMsg = msg;
             }
         }
 
         protected void UpdateMessage(string msg)
-        {
+        { 
             UpdateMessageEvent?.Invoke(msg);
         }
     }
-
 }
