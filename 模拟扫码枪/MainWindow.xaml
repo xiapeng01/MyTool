@@ -7,7 +7,7 @@
         mc:Ignorable="d"
         MouseDoubleClick="Window_MouseDoubleClick"
         Closing="Window_Closing"
-        Title="模拟扫码枪" Height="600" Width="1100">
+        Title="模拟扫码枪" Height="750" Width="1100">
     <Window.DataContext>
         <local:MainWindowViewModel />
     </Window.DataContext>
@@ -33,18 +33,24 @@
                             <Setter Property="VerticalContentAlignment" Value="Center"/>
                         </Style>
                     </StackPanel.Resources>
-                    <DockPanel> 
+                    <DockPanel>
+                        <Border Width="15" Height="15" Background="{Binding StatusBrush}"/>
                         <CheckBox IsChecked="{Binding IsEnable}" Content="启用"/>
                         <CheckBox IsChecked="{Binding IsUseTriggerString}" Content="校验触发字符串"/>
-                        <CheckBox IsChecked="{Binding AppendHexString}" Content="附加HEX格式"/>
-                        <CheckBox IsChecked="{Binding AppendCRLF}" Content="附加回车换行"/>
+                        <CheckBox IsChecked="{Binding AppendHexString}" Content="HEX(流水号/随机数)"/> 
                     </DockPanel> 
                     <DockPanel  IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="接口类型"/>
-                        <UniformGrid Columns="3">
-                            <ComboBox ItemsSource="{Binding DeviceTypeValues}" SelectedItem="{Binding DeviceType}"/> 
-                            <ComboBox ItemsSource="{Binding WorkModelValues}" SelectedItem="{Binding WorkModel}" Margin="5,0,0,0"/>
-                            <ComboBox ItemsSource="{Binding ResponseModelValues}" SelectedItem="{Binding ResponseModel}" Margin="5,0,0,0"/>
+                        <UniformGrid Columns="2"  >
+                            <ComboBox ItemsSource="{Binding DeviceTypeValues}" SelectedItem="{Binding DeviceType}"  /> 
+                            <ComboBox ItemsSource="{Binding WorkModelValues}" SelectedItem="{Binding WorkModel}" Margin="5,0,0,0"/> 
+                        </UniformGrid>
+                    </DockPanel>
+                    <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
+                        <TextBlock Text="附加内容"/>
+                        <UniformGrid Columns="2" >
+                            <ComboBox ItemsSource="{Binding ResponseModelValues}" SelectedItem="{Binding ResponseModel}" />
+                            <ComboBox ItemsSource="{Binding AppendContentValues}" SelectedItem="{Binding AppendContent}" Margin="5,0,0,0"/>
                         </UniformGrid>
                     </DockPanel>
                     <DockPanel IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}" Visibility="{Binding IsNetwork,Converter={local:BoolToVisibilityConverter }}">

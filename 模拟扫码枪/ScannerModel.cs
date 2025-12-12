@@ -12,12 +12,14 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using static 模拟扫码枪.CommunicationModelBase;
 using Brushes = System.Windows.Media.Brushes;
 
 namespace 模拟扫码枪
@@ -30,7 +32,6 @@ namespace 模拟扫码枪
  
     }
 
-
     public partial class CommunicationModelBase : ObservableObject
     {
         public enum IInterfaceType { 串口, TCP客户端, TCP服务器 }
@@ -40,6 +41,7 @@ namespace 模拟扫码枪
         public enum IWorkModel { 主动触发, 被动接收, 仅发送, 仅接收 }
 
         public enum IResponseModel { 常规, 附加流水号, 附加随机数, 解析发送 }//响应模式
+        public enum IAppendContent { 无, 回车, 换行, 回车换行 }//附加分割符号
 
         protected string GetResponseString(string _receiveString)
         {
@@ -146,6 +148,9 @@ namespace 模拟扫码枪
         public IResponseModel[] ResponseModelValues => Enum.GetValues(typeof(IResponseModel)).Cast<IResponseModel>().ToArray();
 
         [JsonIgnore]
+        public IAppendContent[] AppendContentValues => Enum.GetValues(typeof(IAppendContent)).Cast<IAppendContent>().ToArray();
+
+        [JsonIgnore]
         public string[] PortNames => new string[1] { "" }.Concat(SerialPort.GetPortNames()).ToArray();
 
         [JsonIgnore]
@@ -197,7 +202,7 @@ namespace 模拟扫码枪
         bool appendHexString = false;
 
         [ObservableProperty]
-        bool appendCRLF = false;
+        IAppendContent appendContent = IAppendContent.回车换行;
 
         [ObservableProperty]
         bool isTransmitReceiveDataToStandardInput = false;//转发接收内容到标准输入设备
@@ -231,25 +236,27 @@ namespace 模拟扫码枪
         public CommunicationModelBase()
         {
             index = Count++;
+
+            //检测连接是否是否正常
+            t2 = Task.Run(CheckClientTask);
         }
+
+        Task? t1, t2, t3, t4;
 
         async Task StartWorkTask()
         {
             await Task.Delay(1000);//延时1秒
             //服务器响应客户端连接线程
-            _ = Task.Run(AcceptClientTask);
+            t1 = Task.Run(AcceptClientTask);
 
             //检测连接状态线程
-            //_ = Task.Run(AutoPingTask, cts.Token);
-
-            //检测连接是否是否正常
-            _ = Task.Run(CheckClientTask);
+            //t2 = Task.Run(AutoPingTask, cts.Token); 
 
             //服务器模式主动接收线程
-            _ = Task.Run(NetClientTask);
+            t3 = Task.Run(NetClientTask);
 
             //被动接收线程
-            _ = Task.Run(ReceiveTask);
+            t4 = Task.Run(ReceiveTask);
         }
 
         protected override async void OnPropertyChanged(PropertyChangedEventArgs e)
@@ -279,6 +286,7 @@ namespace 模拟扫码枪
                         pubClient?.Dispose();
                     }
                     catch { }
+                    if (pubClient != null) pubClient.Dispose();
                     pubClient = null;
                     ctsServer?.Cancel();
                 }
@@ -286,8 +294,18 @@ namespace 模拟扫码枪
 
                 if (e.PropertyName.Equals(nameof(IsEnable)))
                 {
-                    if(IsEnable)
+                    if (IsEnable)
                     {
+                        if (t1 != null) await t1;
+                        //if (t2 != null) await t2;
+                        if (t3 != null) await t3;
+                        if (t4 != null) await t4;
+                        t1 = null;
+                        t2 = null;
+                        t3 = null;
+                        t4 = null;
+                        if (!IsEnable) return;
+
                         await StartWorkTask();
                     }
                     else
@@ -316,7 +334,7 @@ namespace 模拟扫码枪
         {
             int lastValue = 0;
             await Task.Delay(1000);
-            while (IsEnable)
+            while (true)
             {
                 try
                 {
@@ -338,25 +356,20 @@ namespace 模拟扫码枪
                     }
                     if (DeviceType == IInterfaceType.TCP服务器)
                     {
-                        StatusBrush = (connectCounter == lastValue) ? Brushes.Red : Brushes.DarkGreen;
-                        lastValue = connectCounter;
-                    }
+                        var removeClientList = new List<TcpClient>();
+                        foreach (var client in clientList)
+                        {
+                            if (client.Client is null) removeClientList.Add(client);
+                            if (!IsConnected(client)) client.Dispose();
+                        }
 
-                    //else if (DeviceType == IInterfaceType.TCP服务器)
-                    //{
-                    //    if (clientList != null && clientList.Count > 0)
-                    //    {
-                    //        var res = clientList.Where(a => !IsConnected(a)).ToArray();//筛选出断开连接的设备
-                    //        res.Select(a => 
-                    //        {
-                    //            if(a!=null) a.Dispose(); 
-                    //            clientList.Remove(a);
-                    //            return true;
-                    //        }).ToArray();//移除断开连接的设备
-                    //    }
-                    //    var flag = clientList != null && clientList.Count > 0 && clientList.Any(a => IsConnected(a));
-                    //    StatusBrush = flag ? Brushes.DarkGreen : Brushes.Red; 
-                    //} 
+                        foreach (var client in removeClientList)
+                        {
+                            clientList.Remove(client);
+                        }
+
+                        StatusBrush = clientList.Any(a => IsConnected(a)) ? Brushes.DarkGreen : Brushes.Red;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -376,12 +389,6 @@ namespace 模拟扫码枪
                 try
                 {
                     await Task.Delay(50);
-
-                    //if(!IsEnable || DeviceType != IInterfaceType.TCP客户端)
-                    //{
-                    //    pubClient?.Dispose();
-                    //    pubClient = null;
-                    //}
 
                     if (!IsEnable || DeviceType != IInterfaceType.串口 || (WorkModel != IWorkModel.被动接收 && WorkModel != IWorkModel.仅接收))
                     {
@@ -433,7 +440,6 @@ namespace 模拟扫码枪
                                 }
                             }
                         }
-
                     }
                 }
                 catch (Exception ex)
@@ -565,13 +571,12 @@ namespace 模拟扫码枪
                         ReceiveString = str;
                         var str2 = GetResponseString(ReceiveString);
                         if (string.IsNullOrWhiteSpace(str2)) return false;
-                        var sendData = Encoding.UTF8.GetBytes(str2);
+                        var sendData = Encoding.UTF8.GetBytes(str2 + GetAppendContent(AppendContent));
                         await s.WriteAsync(sendData);
                         await s.FlushAsync();
                         return true;
                     }
                 }
-
             }
             catch { }
             return false;
@@ -600,33 +605,22 @@ namespace 模拟扫码枪
                     {
                         if (server == null)
                         {
-                            server = new TcpListener(IPAddress.Any, Port); 
+                            server = new TcpListener(IPAddress.Any, Port);
                             ctsServer = new CancellationTokenSource();
                         }
-                        server?.Start(); 
+                        server?.Start();
 
                         if (server != null)
-                        { 
+                        {
                             while (IsEnable)
                             {
                                 var client = await server.AcceptTcpClientAsync(ctsServer.Token);
                                 clientList.Add(client);
-                                var tmpCts = new CancellationTokenSource();
-                                _ = Task.Run(async () =>
-                                {
-                                    var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
-                                    while (IsEnable && IsConnected(client))
-                                    {
-                                        await timer.WaitForNextTickAsync();
-                                        connectCounter++;//只要有连接，计数就一直变化
-                                    }
-                                    clientList.Remove(client);
-                                    tmpCts.Cancel();
-                                });
                                 _ = Task.Run(async () =>
                                 {
                                     var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
-                                    while (IsEnable && !tmpCts.IsCancellationRequested && DeviceType == IInterfaceType.TCP服务器 && IsConnected(client))
+                                    while (IsEnable && client.Client != null &&
+                                    DeviceType == IInterfaceType.TCP服务器 && IsConnected(client))
                                     {
                                         try
                                         {
@@ -637,39 +631,20 @@ namespace 模拟扫码枪
                                                 pubClient = client;
                                             }
                                         }
-                                        catch (Exception)
-                                        {
-
-                                        }
+                                        catch (Exception) { }
                                     }
                                 });
                             }
-                            try
-                            {
-                                ctsServer.Dispose();
-                            }
-                            catch (Exception)
-                            {
-                            }
+                            ctsServer?.Cancel();
+                            ctsServer?.Dispose();
                             ctsServer = null;
                         }
                     }
-                    else
+                    else if (server != null)
                     {
-                        if (server != null)
-                        {
-                            try
-                            {
-                                server?.Stop();
-                                server?.Dispose();
-                                server = null;
-                            }
-                            catch (Exception)
-                            {
-                            }
-
-
-                        }
+                        server?.Stop();
+                        server?.Dispose();
+                        server = null;
                     }
                 }
                 catch (Exception ex)
@@ -686,25 +661,28 @@ namespace 模拟扫码枪
                 }
                 finally
                 {
-                    try
-                    {
-                        ctsServer?.Cancel();
-                    }
-                    catch { }
+                    ctsServer?.Cancel();
                 }
             }
             if (server != null)
             {
-                try
-                {
-                    server.Stop();
-                    server.Dispose();
-                    server = null;
-                }
-                catch (Exception)
-                {
-                }
+                server?.Stop();
+                server?.Dispose();
                 server = null;
+            }
+            foreach (var client in clientList)
+            {
+                if (client != null && IsConnected(client))
+                {
+                    try
+                    {
+                        client.Dispose();
+                    }
+                    catch (Exception)
+                    {
+
+                    }
+                }
             }
         }
 
@@ -730,6 +708,7 @@ namespace 模拟扫码枪
 
             try
             {
+                if (!IsEnable) return "";
                 if (DeviceType == IInterfaceType.TCP客户端)
                 {
                     if (pubClient is null)
@@ -863,6 +842,18 @@ namespace 模拟扫码枪
             }
         }
 
+        string GetAppendContent(IAppendContent append)
+        {
+            return (AppendContent) switch
+            {
+                IAppendContent.无 => "",
+                IAppendContent.回车 => "\r",
+                IAppendContent.换行 => "\n",
+                IAppendContent.回车换行 => "\r\n",
+                _ => ""
+            };
+        }
+
         /// <summary>
         /// 主动模式的作业都汇集在这里，主动模式的串口，Tcp客户端，Tcp服务器都汇集在这里，主动模式是发送字符串，然后等待接收内容
         /// </summary>
@@ -877,7 +868,7 @@ namespace 模拟扫码枪
                 {
                     var str = GetResponseString(TriggerString);
                     if (string.IsNullOrEmpty(str)) return "";
-                    var sendData = Encoding.UTF8.GetBytes(str + (AppendCRLF ? Environment.NewLine : ""));
+                    var sendData = Encoding.UTF8.GetBytes(str + GetAppendContent(AppendContent));
                     await s.WriteAsync(sendData);
                     await s.FlushAsync();
                     StatusBrush = Brushes.DarkGreen;
@@ -886,7 +877,7 @@ namespace 模拟扫码枪
                 else if (WorkModel == IWorkModel.主动触发)//主动触发时是要发送触发字符串的
                 {
                     ReceiveString = "";
-                    var writeData = Encoding.UTF8.GetBytes(AppendCRLF ? TriggerString + Environment.NewLine : TriggerString);
+                    var writeData = Encoding.UTF8.GetBytes(TriggerString + GetAppendContent(AppendContent));
                     s.Write(writeData);
                     await s.FlushAsync();
                     if (DeviceType == IInterfaceType.串口) await Task.Delay(50);
@@ -937,7 +928,6 @@ namespace 模拟扫码枪
             UpdateMessageEvent?.Invoke(msg);
         }
     }
-
 
 }
  
