@@ -35,9 +35,10 @@
                     </StackPanel.Resources>
                     <DockPanel>
                         <Border Width="15" Height="15" Background="{Binding StatusBrush}"/>
-                        <CheckBox IsChecked="{Binding IsEnable}" Content="启用"/>
-                        <CheckBox IsChecked="{Binding IsUseTriggerString}" Content="校验触发字符串"/>
-                        <CheckBox IsChecked="{Binding AppendHexString}" Content="HEX(流水号/随机数)"/> 
+                        <CheckBox IsChecked="{Binding IsEnable}" Content="启用" VerticalAlignment="Center"/>
+                        <CheckBox IsChecked="{Binding IsUseTriggerString}" Content="校验触发字符串" VerticalAlignment="Center"/>
+                        <CheckBox IsChecked="{Binding AppendHexString}" Content="HEX(流水号/随机数)" VerticalAlignment="Center"/>
+                        <TextBox Text="{Binding ClientCount,Mode=OneWay}" IsReadOnly="True" Margin="5,0,0,0"/>
                     </DockPanel> 
                     <DockPanel  IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="接口类型"/>
