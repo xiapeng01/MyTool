@@ -81,7 +81,7 @@ namespace 模拟扫码枪
                     BlurEffectRadius = 0;
                 }
             }
-        }
+        } 
 
         void AddMessage(string s)
         {
