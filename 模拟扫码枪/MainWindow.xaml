@@ -5,15 +5,18 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:模拟扫码枪"
         mc:Ignorable="d"
-        MouseDoubleClick="Window_MouseDoubleClick"
+        WindowStartupLocation="CenterScreen"
         Closing="Window_Closing"
-        Title="模拟扫码枪" Height="750" Width="1100">
+        Title="模拟扫码枪" Height="480" Width="800">
+    <Window.InputBindings>
+        <KeyBinding Key="Esc" Command="{Binding CloseCommand}"/>
+    </Window.InputBindings>
     <Window.DataContext>
         <local:MainWindowViewModel />
     </Window.DataContext>
     <Window.Resources>
-        <DataTemplate DataType="{x:Type local:ScannerModel}">
-            <Border BorderBrush="Black" BorderThickness="1" CornerRadius="5" Margin="5" Padding="5">
+        <DataTemplate x:Key="dtScanner" DataType="{x:Type local:ScannerModel}">
+            <Border Background="White" BorderBrush="Black" BorderThickness="1" >
                 <StackPanel>
                     <StackPanel.Resources>
                         <Style TargetType="DockPanel">
@@ -39,7 +42,11 @@
                         <CheckBox IsChecked="{Binding IsUseTriggerString}" Content="校验触发字符串" VerticalAlignment="Center"/>
                         <CheckBox IsChecked="{Binding AppendHexString}" Content="HEX(流水号/随机数)" VerticalAlignment="Center"/>
                         <TextBox Text="{Binding ClientCount,Mode=OneWay}" IsReadOnly="True" Margin="5,0,0,0"/>
-                    </DockPanel> 
+                    </DockPanel>
+                    <DockPanel >
+                        <TextBlock Text="名称"/>
+                        <TextBox Text="{Binding Name}"/> 
+                    </DockPanel>
                     <DockPanel  IsEnabled="{Binding IsEnable, Converter={local:BoolReverseConverter}}">
                         <TextBlock Text="接口类型"/>
                         <UniformGrid Columns="2"  >
@@ -93,25 +100,74 @@
                         <TextBlock Text="流水号"/>
                         <TextBox Text="{Binding AppendContentLength}" MinWidth="50" ToolTip="附加内容长度" Margin="5,0,0,0" DockPanel.Dock="Right"/>
                         <TextBox Text="{Binding OrderIndex}"/>
-                    </DockPanel> 
+                    </DockPanel>
+                    <Button Content="关闭" Click="Button_Click" MinHeight="35"/>
                 </StackPanel>
             </Border>
         </DataTemplate>
     </Window.Resources>
-    <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="3*" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
-        <TextBox Text="{Binding Msg}" AcceptsReturn="True" Grid.Column="1" Margin="5"/>
-        <UniformGrid Columns="2" >
-            <ContentControl Content="{Binding Scanners[0]}"/>
-            <ContentControl Content="{Binding Scanners[1]}"/>
-            <ContentControl Content="{Binding Scanners[2]}"/>
-            <ContentControl Content="{Binding Scanners[3]}"/>
-            <ContentControl Content="{Binding Scanners[4]}"/>
-            <ContentControl Content="{Binding Scanners[5]}"/>
-        </UniformGrid>
+    <Grid >
 
+        <Grid Margin="5"> 
+            <Grid.Effect>
+                <BlurEffect Radius="{Binding BlurEffectRadius}" />
+            </Grid.Effect>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <GroupBox Header="消息" Grid.Column="1" Padding="5">
+                <ScrollViewer >
+                    <TextBox Text="{Binding Msg}" AcceptsReturn="True"    MouseDoubleClick="Window_MouseDoubleClick"/>
+                </ScrollViewer>
+            </GroupBox>
+
+            <GroupBox Header="设备列表" Grid.Column="0" Padding="5">
+                <DockPanel >
+                    <UniformGrid DockPanel.Dock="Bottom" Columns="3">
+                        <UniformGrid.Resources>
+                            <Style TargetType="Button">
+                                <Setter Property="MinHeight" Value="35"/>
+                                <Setter Property="Margin" Value="5"/>
+                            </Style>
+                        </UniformGrid.Resources>
+                        <Button Content="增加" FontWeight="Bold" Foreground="DarkGreen" Command="{Binding AddItemCommand}"/>
+                        <Button Content="删除" FontWeight="Bold" Foreground="DarkRed" Command="{Binding RemoveItemCommand}"/>
+                        <Button Content="保存" FontWeight="Bold" Foreground="DarkBlue" Command="{Binding SaveListCommand}"/>
+                    </UniformGrid>
+                    <ListView ItemsSource="{Binding Scanners}"   SelectedItem="{Binding SelectedItem}"  MouseDoubleClick="ListView_MouseDoubleClick">
+                        <ListView.ItemTemplate>
+                            <DataTemplate DataType="local:ScannerModel">
+                                <StackPanel Orientation="Horizontal" >
+                                    <Border Width="15" Height="15" Background="{Binding StatusBrush}"  Margin="5,0,0,0"/>
+                                    <CheckBox IsChecked="{Binding IsEnable}" VerticalAlignment="Center"  Margin="5,0,0,0"/>
+                                    <TextBlock Text="{Binding DeviceType}" Margin="5,0,0,0"/>
+                                    <TextBox Text="{Binding Name}" MinWidth="120" Margin="5,0,0,0"/>
+                                    <TextBox Text="{Binding ReceiveString}" MinWidth="250" Margin="5,0,0,0"/>
+                                    <TextBox Text="{Binding ClientCount,Mode=OneWay}" MinWidth="20" IsReadOnly="True" Margin="5,0,0,0"/>
+                                    <Button Content="发送" Command="{Binding  SendCommand}" Margin="5,0,0,0" MouseDoubleClick="Button_MouseDoubleClick"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </DockPanel>
+            </GroupBox>
+        </Grid>
+
+        <Grid Margin="5">
+            <Border  Visibility="{Binding PropertyVisibility}"  Background="Transparent" >
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" ShadowDepth="5" BlurRadius="5" />
+                </Border.Effect> 
+            </Border>
+
+            <ContentControl MinWidth="500"  VerticalAlignment="Center"  HorizontalAlignment="Center" Visibility="{Binding PropertyVisibility}" 
+                Content="{Binding SelectedItem}" ContentTemplate="{StaticResource dtScanner}" Background="Transparent" >
+                        <ContentControl.Effect>
+                            <BlurEffect Radius="0"/>
+                        </ContentControl.Effect>
+                    </ContentControl>
+            
+        </Grid>
     </Grid>
 </Window>
