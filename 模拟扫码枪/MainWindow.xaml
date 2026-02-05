@@ -142,8 +142,9 @@
                                     <Border Width="15" Height="15" Background="{Binding StatusBrush}"  Margin="5,0,0,0"/>
                                     <CheckBox IsChecked="{Binding IsEnable}" VerticalAlignment="Center"  Margin="5,0,0,0"/>
                                     <TextBlock Text="{Binding DeviceType}" Margin="5,0,0,0"/>
-                                    <TextBox Text="{Binding Name}" MinWidth="120" Margin="5,0,0,0"/>
-                                    <TextBox Text="{Binding ReceiveString}" MinWidth="250" Margin="5,0,0,0"/>
+                                    <TextBox Text="{Binding Name}" MinWidth="100" Margin="5,0,0,0"/>
+                                    <TextBox Text="{Binding SendString}" MinWidth="140" Margin="5,0,0,0"/>
+                                    <TextBox Text="{Binding ReceiveString}" MinWidth="100" Margin="5,0,0,0"/>
                                     <TextBox Text="{Binding ClientCount,Mode=OneWay}" MinWidth="20" IsReadOnly="True" Margin="5,0,0,0"/>
                                     <Button Content="发送" Command="{Binding  SendCommand}" Margin="5,0,0,0" MouseDoubleClick="Button_MouseDoubleClick"/>
                                 </StackPanel>
