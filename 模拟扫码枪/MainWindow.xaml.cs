@@ -36,5 +36,53 @@ namespace 模拟扫码枪
                 vm.Msg = "";//清空消息
             }
         }
+
+        private void ContentControl_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if(sender is ContentControl cc && cc.DataContext is ScannerModel sm)
+            {
+                if(this.DataContext is MainWindowViewModel vm)
+                {
+                    vm.SelectedItem = sm;
+                    vm.PropertyVisibility = Visibility.Visible;
+                }
+            }
+        }
+
+        private void ListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (this.DataContext is MainWindowViewModel vm)
+            { 
+                vm.PropertyVisibility = Visibility.Visible;
+
+                var obj = vm.SelectedItem;
+            }
+        }
+
+        private void Button_Click(object sender, RoutedEventArgs e)
+        {
+            if(this.DataContext is MainWindowViewModel viewModel)
+            {
+                viewModel.PropertyVisibility = Visibility.Collapsed;
+                viewModel.BlurEffectRadius = 0;
+            }
+        }
+
+        private void ListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (this.DataContext is MainWindowViewModel viewModel)
+            {
+                if(viewModel.SelectedItem != null)
+                {
+                    viewModel.PropertyVisibility = Visibility.Visible;
+                    viewModel.BlurEffectRadius = 8;
+                }
+            }
+        }
+
+        private void Button_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+        }
     }
 }

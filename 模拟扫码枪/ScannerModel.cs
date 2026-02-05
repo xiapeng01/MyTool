@@ -69,6 +69,9 @@ namespace 模拟扫码枪
 
         #region Properties
         [ObservableProperty]
+        string name = "默认通信设备";
+
+        [ObservableProperty]
         private bool isEnable = false;
 
         [ObservableProperty]
