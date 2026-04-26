@@ -14,14 +14,12 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json.Serialization;
+using System.Text; 
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
-using static 模拟扫码枪.CommunicationModelBase;
-using Brushes = System.Windows.Media.Brushes;
+using static 模拟扫码枪.CommunicationModelBase; 
 
 namespace 模拟扫码枪
 {
@@ -83,25 +81,32 @@ namespace 模拟扫码枪
         [ObservableProperty]
         private int orderIndex = 0;//流水号 
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public IInterfaceType[] DeviceTypeValues => Enum.GetValues(typeof(IInterfaceType)).Cast<IInterfaceType>().ToArray();
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public IWorkModel[] WorkModelValues => Enum.GetValues(typeof(IWorkModel)).Cast<IWorkModel>().ToArray();
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public IResponseModel[] ResponseModelValues => Enum.GetValues(typeof(IResponseModel)).Cast<IResponseModel>().ToArray();
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public IAppendContent[] AppendContentValues => Enum.GetValues(typeof(IAppendContent)).Cast<IAppendContent>().ToArray();
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public string[] PortNames => new string[1] { "" }.Concat(SerialPort.GetPortNames()).ToArray();
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public Parity[] ParityValues => Enum.GetValues(typeof(Parity)).Cast<Parity>().ToArray();
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public StopBits[] StopBitsValues => Enum.GetValues(typeof(StopBits)).Cast<StopBits>().ToArray();
 
         [ObservableProperty]
@@ -167,23 +172,32 @@ namespace 模拟扫码枪
         [ObservableProperty]
         private int checkInterval = 500;//检测间隔
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public int ClientCount =>clientList!=null ?clientList.Count:0;
 
-        [property: JsonIgnore]
-        [ObservableProperty]
-        private SolidColorBrush statusBrush = Brushes.Red;
+        //[property: JsonIgnore]
+        //[ObservableProperty]
+        //private SolidColorBrush statusBrush = Brushes.Red;
 
-        [JsonIgnore]
+ 
+        [ObservableProperty]
+        bool isConnected = false;
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public bool CanTrigger => IsEnable && (WorkModel == IWorkModel.主动触发 || WorkModel == IWorkModel.仅发送);
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public bool IsSerialPort => DeviceType == IInterfaceType.串口;
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public bool IsNetwork => DeviceType == IInterfaceType.TCP服务器 || DeviceType == IInterfaceType.TCP客户端;
 
-        [JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public bool IsOnlyReceiveModel => WorkModel == IWorkModel.仅接收;
         #endregion
 
@@ -264,6 +278,7 @@ namespace 模拟扫码枪
                 else
                 {
                     ctsServer?.Cancel();
+                    IsConnected = false;
                 }
             }
         }
@@ -272,7 +287,8 @@ namespace 模拟扫码枪
         {
             try
             {
-                StatusBrush = Brushes.DarkGreen;
+                IsConnected = true;
+                //StatusBrush = Brushes.DarkGreen;
                 if (!IsEnable || s is null || !s.CanRead || !s.CanWrite) return false;
                 s.ReadTimeout = ReadTimeout;
                 s.WriteTimeout = WriteTimeout;
@@ -422,7 +438,8 @@ namespace 模拟扫码枪
             var sendData = Encoding.UTF8.GetBytes(str + GetAppendContent(AppendContent));
             await stream.WriteAsync(sendData);
             await stream.FlushAsync();
-            StatusBrush = Brushes.DarkGreen;
+            //StatusBrush = Brushes.DarkGreen;
+            IsConnected = true;
             return "";
         }
 
@@ -442,7 +459,8 @@ namespace 模拟扫码枪
             {
                 ReceiveString = Encoding.UTF8.GetString(buffer, 0, n).Trim();
                 ReceiveCodeEvent?.Invoke(ReceiveString);
-                StatusBrush = Brushes.DarkGreen;
+                //StatusBrush = Brushes.DarkGreen;
+                IsConnected = true;
                 return ReceiveString;
             }
             return "";
@@ -468,18 +486,19 @@ namespace 模拟扫码枪
 
         private void HandleException(Exception ex, string context)
         {
-            StatusBrush = Brushes.Red;
+            //StatusBrush = Brushes.Red;
+            IsConnected=false;
             UpdateFilterMessage($"【{IP}:{Port}/{PortName}】{context}：{ex.Message}");
         }
 
-        private bool IsConnected(Socket s)
+        private bool CheckConnected(Socket s)
         {
             return s != null && !(s.Poll(1000, SelectMode.SelectRead) && (s.Available == 0)) && s.Connected;
         }
 
-        private bool IsConnected(TcpClient client)
+        private bool CheckConnected(TcpClient client)
         {
-            return client != null && IsConnected(client.Client);
+            return client != null && CheckConnected(client.Client);
         }
 
         private async Task CheckClientTask()
@@ -501,8 +520,9 @@ namespace 模拟扫码枪
                             await pubClient.ConnectAsync(IP, Port);
                         }
 
-                        var flag = pubClient != null && IsConnected(pubClient);
-                        StatusBrush = flag ? Brushes.DarkGreen : Brushes.Red;
+                        var flag = pubClient != null && CheckConnected(pubClient);
+                        //StatusBrush = flag ? Brushes.DarkGreen : Brushes.Red;
+                        IsConnected = flag;
                         if (!flag) pubClient = null;
                     }
 
@@ -512,7 +532,7 @@ namespace 模拟扫码枪
                         foreach (var client in clientList)
                         {
                             if (client.Client is null) removeClientList.Add(client);
-                            if (!IsConnected(client)) client.Dispose();
+                            if (!CheckConnected(client)) client.Dispose();
                         }
 
                         foreach (var client in removeClientList)
@@ -520,12 +540,14 @@ namespace 模拟扫码枪
                             clientList.TryTake(out _);
                         }
 
-                        StatusBrush = clientList.Any(a => IsConnected(a)) ? Brushes.DarkGreen : Brushes.Red;
+                        //StatusBrush = clientList.Any(a => CheckConnected(a)) ? Brushes.DarkGreen : Brushes.Red;
+                        IsConnected = clientList.Any(a => CheckConnected(a));
                     }
                 }
                 catch (Exception)
                 {
-                    StatusBrush = Brushes.Red;
+                    //StatusBrush = Brushes.Red;
+                    IsConnected= false;
                 }
             }
         }
@@ -807,7 +829,7 @@ namespace 模拟扫码枪
 
             foreach (var client in clientList)
             {
-                if (client != null && IsConnected(client))
+                if (client != null && CheckConnected(client))
                 {
                     client?.Dispose();
                 }
@@ -818,7 +840,7 @@ namespace 模拟扫码枪
         {
             var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
             while (IsEnable && client.Client != null &&
-                   DeviceType == IInterfaceType.TCP服务器 && IsConnected(client)
+                   DeviceType == IInterfaceType.TCP服务器 && CheckConnected(client)
                    && !ctsAll.Token.IsCancellationRequested)
             {
                 try
@@ -838,8 +860,8 @@ namespace 模拟扫码枪
             }
         }
 
-
-        [property: JsonIgnore]
+         
+        [property: System.Text.Json.Serialization.JsonIgnore]
         [RelayCommand(CanExecute = nameof(CanTrigger))]
         public async Task<string> Trigger()
         {
@@ -857,18 +879,21 @@ namespace 模拟扫码枪
             }
             catch (TimeoutException)
             {
-                StatusBrush = Brushes.Red;
+                //StatusBrush = Brushes.Red;
+                IsConnected = false;
                 return "";
             }
             catch (IOException)
             {
-                StatusBrush = Brushes.Red;
+                //StatusBrush = Brushes.Red;
+                IsConnected = false;
                 return "";
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Trigger:{ex.Message}");
-                StatusBrush = Brushes.Red;
+                //StatusBrush = Brushes.Red;
+                IsConnected = false;
                 return "";
             }
         }
@@ -887,7 +912,7 @@ namespace 模拟扫码枪
                 {
                     pubClient = new TcpClient();
                     await pubClient.ConnectAsync(IP, Port);
-                    _ = IsConnected(pubClient);
+                    _ = CheckConnected(pubClient);
                 }
             }
 
@@ -948,19 +973,22 @@ namespace 模拟扫码枪
             }
             catch (TimeoutException)
             {
-                StatusBrush = Brushes.Red;
+                //StatusBrush = Brushes.Red;
+                IsConnected = false;
             }
             catch (IOException)
             {
-                StatusBrush = Brushes.Red;
+                //StatusBrush = Brushes.Red;
+                IsConnected = false;
             }
             catch (Exception)
             {
-                StatusBrush = Brushes.Red;
+                //StatusBrush = Brushes.Red;
+                IsConnected = false;
             }
         }
-
-        [property: JsonIgnore]
+         
+        [property: System.Text.Json.Serialization.JsonIgnore]
         [RelayCommand]
         private async Task Ping()
         {
@@ -980,7 +1008,8 @@ namespace 模拟扫码枪
             }
             catch (Exception)
             {
-                StatusBrush = Brushes.Red;
+                //StatusBrush = Brushes.Red;
+                IsConnected = false;
             }
         }
 

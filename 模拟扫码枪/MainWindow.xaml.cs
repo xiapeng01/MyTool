@@ -70,19 +70,32 @@ namespace 模拟扫码枪
 
         private void ListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (this.DataContext is MainWindowViewModel viewModel)
-            {
-                if(viewModel.SelectedItem != null)
-                {
-                    viewModel.PropertyVisibility = Visibility.Visible;
-                    //viewModel.BlurEffectRadius = 8;
-                }
-            }
+            
         }
 
         private void Button_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             e.Handled = true;
+        }
+
+        private void ListView_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+
+        }
+
+        private void ListView_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Released && e.RightButton == MouseButtonState.Pressed)
+            {
+                if (this.DataContext is MainWindowViewModel viewModel)
+                {
+                    if (viewModel.SelectedItem != null)
+                    {
+                        viewModel.PropertyVisibility = Visibility.Visible;
+                        //viewModel.BlurEffectRadius = 8;
+                    }
+                }
+            }
         }
     }
 }

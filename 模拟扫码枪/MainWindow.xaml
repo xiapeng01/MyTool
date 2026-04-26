@@ -37,7 +37,19 @@
                         </Style>
                     </StackPanel.Resources>
                     <DockPanel>
-                        <Border Width="15" Height="15" Background="{Binding StatusBrush}"/>
+                        <Border Width="15" Height="15"  >
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="Red"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsConnected}" Value="true">
+                                            <Setter Property="Background" Value="Green"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                        </Border>
+                        
                         <CheckBox IsChecked="{Binding IsEnable}" Content="启用" VerticalAlignment="Center"/>
                         <CheckBox IsChecked="{Binding IsUseTriggerString}" Content="校验触发字符串" VerticalAlignment="Center"/>
                         <CheckBox IsChecked="{Binding AppendHexString}" Content="HEX(流水号/随机数)" VerticalAlignment="Center"/>
@@ -135,11 +147,22 @@
                         <Button Content="删除" FontWeight="Bold" Foreground="DarkRed" Command="{Binding RemoveItemCommand}"/>
                         <Button Content="保存" FontWeight="Bold" Foreground="DarkBlue" Command="{Binding SaveListCommand}"/>
                     </UniformGrid>
-                    <ListView ItemsSource="{Binding Scanners}"   SelectedItem="{Binding SelectedItem}"  MouseDoubleClick="ListView_MouseDoubleClick">
+                    <ListView ItemsSource="{Binding Scanners}"   SelectedItem="{Binding SelectedItem}" PreviewMouseDown="ListView_PreviewMouseDown" MouseDown="ListView_MouseDown" MouseDoubleClick="ListView_MouseDoubleClick">
                         <ListView.ItemTemplate>
                             <DataTemplate DataType="local:ScannerModel">
                                 <StackPanel Orientation="Horizontal" >
-                                    <Border Width="15" Height="15" Background="{Binding StatusBrush}"  Margin="5,0,0,0"/>
+                                    <Border Width="15" Height="15"    Margin="5,0,0,0">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="Red"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsConnected}" Value="true">
+                                                        <Setter Property="Background" Value="Green"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
                                     <CheckBox IsChecked="{Binding IsEnable}" VerticalAlignment="Center"  Margin="5,0,0,0"/>
                                     <TextBlock Text="{Binding DeviceType}" Margin="5,0,0,0"/>
                                     <TextBox Text="{Binding Name}" MinWidth="100" Margin="5,0,0,0"/>
